@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Spools — Filaman{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Spools</h2>
+</div>
+
+<div class="toolbar">
+  <form method="get" action="/spools" class="search-form" role="search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search manufacturer, material, color, SKU&hellip;">
+    <button type="submit" class="outline">Search</button>
+  </form>
+  <div class="page-actions">
+    <a href="/import" role="button" class="outline">AI Import</a>
+    <a href="/spools/new" role="button">+ Add Spool</a>
+  </div>
+</div>
+
+{% if spools %}
+<figure class="overflow-auto">
+  <table>
+    <thead>
+      <tr>
+        <th>Color</th>
+        <th>Material</th>
+        <th>Manufacturer</th>
+        <th>Weight</th>
+        <th>SKU</th>
+        <th class="qty-col">Qty</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for spool in spools %}
+      <tr>
+        <td>
+          <span class="swatch" style="background: {{ spool.color.color_code or 'transparent' }}"></span>
+          {{ spool.color.name }}
+        </td>
+        <td>{{ spool.material_type.name }}</td>
+        <td>{{ spool.manufacturer.name }}</td>
+        <td>{{ spool.weight }} g</td>
+        <td>{{ spool.sku or '—' }}</td>
+        <td class="qty-cell">{% with spool=spool %}{% include "partials/_qty_cell.html" %}{% endwith %}</td>
+        <td class="row-actions">
+          <a href="/spools/{{ spool.id }}/edit">Edit</a>
+          <form method="post" action="/spools/{{ spool.id }}/delete" class="inline-form"
+                onsubmit="return confirm('Delete this spool?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button danger-text">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5"><strong>Total spools</strong></td>
+        <td class="qty-col"><strong>{{ total_qty }}</strong></td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</figure>
+{% elif q %}
+<p>No spools match "{{ q }}". <a href="/spools">Clear search</a></p>
+{% else %}
+<article class="empty-state">
+  <p>No spools yet.</p>
+  <p><a href="/spools/new" role="button">Add your first spool</a>
+     or <a href="/import" role="button" class="outline">import one with AI</a></p>
+</article>
+{% endif %}
+{% endblock %}

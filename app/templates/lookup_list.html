@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ cfg.title }} — Filaman{% endblock %}
+{% block content %}
+<h2>{{ cfg.title }}</h2>
+
+<article>
+  <h4>Add {{ cfg.singular }}</h4>
+  <form method="post" action="/{{ entity }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset role="group">
+      <input name="name" placeholder="Name" required>
+      {% if entity == "manufacturers" %}
+      <input name="mfg_url" type="url" placeholder="Website (optional)">
+      {% elif entity == "colors" %}
+      <input type="color" name="color_code" value="#808080" title="Color code">
+      {% endif %}
+      <button type="submit">Add</button>
+    </fieldset>
+  </form>
+</article>
+
+{% if items %}
+<figure class="overflow-auto">
+  <table>
+    <thead>
+      <tr>
+        {% if entity == "colors" %}<th class="swatch-col"></th>{% endif %}
+        <th>Name</th>
+        {% if entity == "manufacturers" %}<th>Website</th>{% endif %}
+        {% if entity == "colors" %}<th>Code</th>{% endif %}
+        <th class="actions-col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        {% if entity == "colors" %}
+        <td><span class="swatch" style="background: {{ it.color_code or 'transparent' }}"></span></td>
+        {% endif %}
+        <td><input name="name" value="{{ it.name }}" form="edit-{{ it.id }}" required></td>
+        {% if entity == "manufacturers" %}
+        <td><input name="mfg_url" type="url" value="{{ it.mfg_url or '' }}" form="edit-{{ it.id }}" placeholder="Website"></td>
+        {% endif %}
+        {% if entity == "colors" %}
+        <td><input type="color" name="color_code" value="{{ it.color_code or '#808080' }}" form="edit-{{ it.id }}"></td>
+        {% endif %}
+        <td class="row-actions">
+          <button type="submit" form="edit-{{ it.id }}" class="outline">Save</button>
+          <button type="submit" form="del-{{ it.id }}" class="outline danger-text">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</figure>
+
+{% for it in items %}
+<form id="edit-{{ it.id }}" method="post" action="/{{ entity }}/{{ it.id }}" class="hidden-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+<form id="del-{{ it.id }}" method="post" action="/{{ entity }}/{{ it.id }}/delete" class="hidden-form"
+      onsubmit="return confirm('Delete {{ it.name }}?')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+{% endfor %}
+{% else %}
+<p>No {{ cfg.title|lower }} yet — add one above.</p>
+{% endif %}
+{% endblock %}

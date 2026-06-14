@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Admin — Filaman{% endblock %}
+{% block content %}
+<h2>Admin</h2>
+
+<article>
+  <h4>Change Password</h4>
+  <form method="post" action="/admin/password">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Current password
+      <input type="password" name="current_password" required autocomplete="current-password">
+    </label>
+    <div class="grid">
+      <label>New password
+        <input type="password" name="new_password" required minlength="8" autocomplete="new-password">
+      </label>
+      <label>Confirm new password
+        <input type="password" name="confirm_password" required minlength="8" autocomplete="new-password">
+      </label>
+    </div>
+    <button type="submit">Change Password</button>
+  </form>
+</article>
+
+<article>
+  <h4>Database Backup</h4>
+  <p>Download a snapshot of the entire database.</p>
+  <a href="/admin/backup" role="button" class="outline">Download Backup</a>
+</article>
+
+<article>
+  <h4>Database Restore</h4>
+  <p>Replace the current database with a previously downloaded backup. <strong>All current data will be overwritten</strong>, and you will be logged out.</p>
+  <form method="post" action="/admin/restore" enctype="multipart/form-data"
+        onsubmit="return confirm('Overwrite the current database with this backup?')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="file" name="file" accept=".db" required>
+    <button type="submit" class="contrast">Restore Backup</button>
+  </form>
+</article>
+
+<article class="danger-zone">
+  <h4>&#9888;&#65039; Danger Zone: Reset Database</h4>
+  <p>This <strong>permanently deletes all data</strong> — spools, inventory, manufacturers, colors, and user accounts. The app returns to first-run setup.</p>
+  <p>To confirm, type exactly: <code>{{ reset_phrase }}</code></p>
+  <form method="post" action="/admin/reset">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input name="confirm_text" placeholder="Type the confirmation phrase" autocomplete="off">
+    <button type="submit" class="danger-button">Reset Database</button>
+  </form>
+</article>
+{% endblock %}

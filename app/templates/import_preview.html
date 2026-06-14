@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Review Import — Filaman{% endblock %}
+{% block content %}
+<article class="narrow">
+  <hgroup>
+    <h2>Review Import</h2>
+    <p>Edit anything that looks wrong, then save. Missing manufacturers, materials, and colors will be created automatically.</p>
+  </hgroup>
+
+  <form method="post" action="/import/save">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label>Manufacturer
+      <input name="manufacturer" value="{{ fields.manufacturer or '' }}" required list="dl-manufacturers">
+      <datalist id="dl-manufacturers">
+        {% for n in manufacturer_names %}<option value="{{ n }}">{% endfor %}
+      </datalist>
+    </label>
+
+    <label>Material
+      <input name="material" value="{{ fields.material or '' }}" required list="dl-materials">
+      <datalist id="dl-materials">
+        {% for n in material_names %}<option value="{{ n }}">{% endfor %}
+      </datalist>
+    </label>
+
+    <div class="grid">
+      <label>Color name
+        <input name="color_name" value="{{ fields.color_name or '' }}" required list="dl-colors">
+        <datalist id="dl-colors">
+          {% for n in color_names %}<option value="{{ n }}">{% endfor %}
+        </datalist>
+      </label>
+      <label>Color code
+        <input type="color" name="color_hex" value="{{ fields.color_hex or '#808080' }}">
+      </label>
+    </div>
+
+    <div class="grid">
+      <label>Weight (grams)
+        <input type="number" name="weight" min="1" required value="{{ fields.weight_g or 1000 }}">
+      </label>
+      <label>Quantity
+        <input type="number" name="qty" min="1" required value="{{ fields.qty or 1 }}">
+      </label>
+    </div>
+
+    <label>SKU <small>(optional)</small>
+      <input name="sku" value="{{ fields.sku or '' }}">
+    </label>
+
+    <div class="form-actions">
+      <a href="/import" role="button" class="secondary outline">Cancel</a>
+      <button type="submit">Save Spool</button>
+    </div>
+  </form>
+</article>
+{% endblock %}

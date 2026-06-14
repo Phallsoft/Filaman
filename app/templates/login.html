@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Login — Filaman{% endblock %}
+{% block content %}
+<article class="narrow">
+  <h2>Login</h2>
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Username
+      <input name="username" value="{{ form_username or '' }}" required autofocus autocomplete="username">
+    </label>
+    <label>Password
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <button type="submit">Login</button>
+  </form>
+</article>
+{% endblock %}

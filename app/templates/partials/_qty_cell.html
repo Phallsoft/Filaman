@@ -1,0 +1,8 @@
+{% if spool %}
+<form hx-post="/spools/{{ spool.id }}/adjust" hx-target="closest .qty-cell" hx-swap="innerHTML" class="qty-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" name="delta" value="-1" class="outline secondary qty-btn" aria-label="Decrease quantity">&minus;</button>
+  <span class="qty-num {% if spool.qty == 0 %}qty-zero{% endif %}">{{ spool.qty }}</span>
+  <button type="submit" name="delta" value="1" class="outline secondary qty-btn" aria-label="Increase quantity">+</button>
+</form>
+{% endif %}

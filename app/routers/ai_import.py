@@ -1,0 +1,115 @@
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import RedirectResponse
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from .. import config
+from ..auth import flash, verify_csrf
+from ..database import get_db
+from ..models import Color, Manufacturer, MaterialType
+from ..services import ai_import as svc
+from ..services.ai_import import ImportError_
+from ..templating import templates
+from .lookups import HEX_RE, find_or_create
+from .spools import merge_or_create_spool
+
+router = APIRouter(prefix="/import")
+
+
+def _suggestions(db: Session) -> dict:
+    return {
+        "manufacturer_names": [m.name for m in db.query(Manufacturer).order_by(func.lower(Manufacturer.name))],
+        "material_names": [m.name for m in db.query(MaterialType).order_by(func.lower(MaterialType.name))],
+        "color_names": [c.name for c in db.query(Color).order_by(func.lower(Color.name))],
+    }
+
+
+@router.get("")
+def import_page(request: Request):
+    return templates.TemplateResponse(request, "import_form.html")
+
+
+@router.post("/parse")
+def parse_import(
+    request: Request,
+    url: str = Form(None),
+    text: str = Form(None),
+    csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    verify_csrf(request, csrf_token)
+    url = (url or "").strip()
+    text = (text or "").strip()
+    if not url and not text:
+        flash(request, "Provide a product URL or paste some text.", "error")
+        return templates.TemplateResponse(request, "import_form.html")
+
+    source = text
+    try:
+        used_brightdata = False
+        if url and not text:
+            source, used_brightdata = svc.fetch_page_text(url)
+        fields = svc.extract_fields(source)
+        if not svc.has_extracted_anything(fields):
+            # Direct fetch may have hit a bot-protection page; retry through Bright Data.
+            if url and not text and not used_brightdata and config.BRIGHTDATA_MCP_URL:
+                source = svc.fetch_via_brightdata(url)
+                fields = svc.extract_fields(source)
+            if not svc.has_extracted_anything(fields):
+                raise ImportError_("Couldn't find any filament details on that page (it may be blocking automated access).")
+    except ImportError_ as e:
+        msg = str(e)
+        if url and not text:
+            msg += " Try copying the relevant product text from the page and pasting it below instead."
+        flash(request, msg, "error")
+        return templates.TemplateResponse(
+            request, "import_form.html", {"form_url": url, "form_text": text}
+        )
+
+    flash(request, "Review the extracted details below, edit as needed, then save.", "info")
+    return templates.TemplateResponse(
+        request,
+        "import_preview.html",
+        {"fields": fields, "source_url": url, **_suggestions(db)},
+    )
+
+
+@router.post("/save")
+def save_import(
+    request: Request,
+    manufacturer: str = Form(...),
+    material: str = Form(...),
+    color_name: str = Form(...),
+    color_hex: str = Form(None),
+    sku: str = Form(None),
+    weight: int = Form(...),
+    qty: int = Form(1),
+    csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    verify_csrf(request, csrf_token)
+    if weight <= 0 or qty < 1:
+        flash(request, "Weight must be positive and quantity at least 1.", "error")
+        return RedirectResponse("/import", status_code=303)
+
+    mfg, mfg_new = find_or_create(db, Manufacturer, manufacturer)
+    mat, mat_new = find_or_create(db, MaterialType, material)
+    code = (color_hex or "").strip()
+    col, col_new = find_or_create(
+        db, Color, color_name, color_code=code if HEX_RE.match(code) else None
+    )
+    if not (mfg and mat and col):
+        flash(request, "Manufacturer, material, and color are required.", "error")
+        return RedirectResponse("/import", status_code=303)
+
+    _, merged = merge_or_create_spool(db, mfg.id, mat.id, col.id, sku, weight, qty)
+    db.commit()
+
+    created = [n for n, is_new in [(mfg.name, mfg_new), (mat.name, mat_new), (col.name, col_new)] if is_new]
+    msg = f"Spool imported (qty {qty})."
+    if created:
+        msg += f" Created: {', '.join(created)}."
+    if merged:
+        msg += " Quantity was merged into an identical existing spool."
+    flash(request, msg, "success")
+    return RedirectResponse("/spools", status_code=303)

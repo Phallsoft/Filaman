@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if spool else "Add" }} Spool — Filaman{% endblock %}
+
+{% macro fk_field(label, field_name, entity, items, selected, singular) %}
+<label for="{{ field_name }}">{{ label }}</label>
+<fieldset role="group" class="fk-group">
+  <select name="{{ field_name }}" id="{{ field_name }}" required>
+    {% with items=items, selected=selected %}{% include "partials/_options.html" %}{% endwith %}
+  </select>
+  <button type="button" class="outline secondary"
+          onclick="var b=document.getElementById('quick-{{ entity }}'); b.hidden=!b.hidden;"
+          title="Add new {{ singular|lower }}">+</button>
+</fieldset>
+<div id="quick-{{ entity }}" class="quick-box" hidden>
+  <fieldset role="group">
+    <input name="qname_{{ entity }}" placeholder="New {{ singular|lower }} name">
+    {% if entity == "colors" %}
+    <input type="color" name="qcolor_{{ entity }}" value="#808080" title="Color code">
+    {% endif %}
+    <button type="button" hx-post="/{{ entity }}/quick"
+            hx-include="#quick-{{ entity }}"
+            hx-target="#{{ field_name }}" hx-swap="innerHTML"
+            hx-on::after-request="this.closest('.quick-box').hidden = true">Add</button>
+  </fieldset>
+</div>
+{% endmacro %}
+
+{% block content %}
+<article class="narrow">
+  <h2>{{ "Edit Spool" if spool else "Add Spool" }}</h2>
+  <form method="post" action="{{ '/spools/' ~ spool.id if spool else '/spools' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    {{ fk_field("Manufacturer", "manufacturer_id", "manufacturers", manufacturers,
+                spool.manufacturer_id if spool else None, "Manufacturer") }}
+    {{ fk_field("Material", "material_type_id", "materials", materials,
+                spool.material_type_id if spool else None, "Material Type") }}
+    {{ fk_field("Color", "color_id", "colors", colors,
+                spool.color_id if spool else None, "Color") }}
+
+    <div class="grid">
+      <label>Weight (grams)
+        <input type="number" name="weight" min="1" required
+               value="{{ spool.weight if spool else 1000 }}">
+      </label>
+      <label>Quantity
+        <input type="number" name="qty" min="0" required
+               value="{{ spool.qty if spool else 1 }}">
+      </label>
+    </div>
+    <label>SKU <small>(optional)</small>
+      <input name="sku" value="{{ spool.sku or '' if spool else '' }}">
+    </label>
+
+    <div class="form-actions">
+      <a href="/spools" role="button" class="secondary outline">Cancel</a>
+      <button type="submit">{{ "Save Changes" if spool else "Add Spool" }}</button>
+    </div>
+  </form>
+</article>
+{% endblock %}

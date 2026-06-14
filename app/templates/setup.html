@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Setup — Filaman{% endblock %}
+{% block content %}
+<article class="narrow">
+  <hgroup>
+    <h2>Welcome to Filaman</h2>
+    <p>Create your account to get started.</p>
+  </hgroup>
+  <form method="post" action="/setup">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Username
+      <input name="username" value="{{ form_username or '' }}" required autofocus autocomplete="username">
+    </label>
+    <label>Password
+      <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      <small>At least 8 characters.</small>
+    </label>
+    <label>Confirm password
+      <input type="password" name="confirm" required minlength="8" autocomplete="new-password">
+    </label>
+    <button type="submit">Create account</button>
+  </form>
+</article>
+{% endblock %}

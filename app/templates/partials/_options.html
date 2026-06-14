@@ -1,0 +1,4 @@
+<option value="" disabled {% if not selected %}selected{% endif %}>Select&hellip;</option>
+{% for it in items %}
+<option value="{{ it.id }}" {% if selected == it.id %}selected{% endif %}>{{ it.name }}</option>
+{% endfor %}

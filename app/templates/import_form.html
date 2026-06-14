@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}AI Import — Filaman{% endblock %}
+{% block content %}
+<article class="narrow">
+  <hgroup>
+    <h2>AI Import</h2>
+    <p>Paste a product page URL or the product text, and AI will extract the spool details for you to review.</p>
+  </hgroup>
+
+  {% if not ai_enabled %}
+  <div class="flash flash-error">
+    No AI API key is configured. Set <code>AI_API_KEY</code> in your <code>.env</code> file and restart.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/import/parse">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Product page URL
+      <input type="url" name="url" value="{{ form_url or '' }}" placeholder="https://example.com/filament-product">
+    </label>
+    <div class="or-divider">— or —</div>
+    <label>Pasted product text
+      <textarea name="text" rows="8" placeholder="Paste the product description here&hellip;">{{ form_text or '' }}</textarea>
+    </label>
+    <button type="submit" {% if not ai_enabled %}disabled{% endif %}>Parse with AI</button>
+  </form>
+</article>
+{% endblock %}

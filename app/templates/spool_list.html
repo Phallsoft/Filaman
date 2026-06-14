@@ -1,12 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Spools — Filaman{% endblock %}
 {% block content %}
+
+{# Build a sort URL preserving current filters/search #}
+{% macro sort_th(key, label, cls='') %}
+{% set is_asc = sort == key %}
+{% set is_desc = sort == '-' ~ key %}
+{% set new_sort = ('-' ~ key) if is_asc else key %}
+{% set href = '/spools?q=' ~ q|urlencode ~ '&sort=' ~ new_sort ~ ('&mfr=' ~ mfr if mfr else '') ~ ('&mat=' ~ mat if mat else '') ~ ('&col=' ~ col if col else '') %}
+<th{% if cls %} class="{{ cls }}"{% endif %}><a href="{{ href }}" class="sort-link{% if is_asc or is_desc %} sort-active{% endif %}">{{ label }}{% if is_asc %} <span class="sort-icon" aria-hidden="true">↑</span>{% elif is_desc %} <span class="sort-icon" aria-hidden="true">↓</span>{% endif %}</a></th>
+{% endmacro %}
+
 <div class="page-head">
   <h2>Spools</h2>
 </div>
 
 <div class="toolbar">
   <form method="get" action="/spools" class="search-form" role="search">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    {% if mfr %}<input type="hidden" name="mfr" value="{{ mfr }}">{% endif %}
+    {% if mat %}<input type="hidden" name="mat" value="{{ mat }}">{% endif %}
+    {% if col %}<input type="hidden" name="col" value="{{ col }}">{% endif %}
     <input type="search" name="q" value="{{ q }}" placeholder="Search manufacturer, material, color, SKU&hellip;">
     <button type="submit" class="outline">Search</button>
   </form>
@@ -16,17 +30,44 @@
   </div>
 </div>
 
+{# Column filters — auto-submit on change, empty values are stripped by JS #}
+<form id="filter-form" method="get" action="/spools" class="filter-bar">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <select name="mfr" onchange="submitFilter()">
+    <option value="">All manufacturers</option>
+    {% for m in manufacturers %}
+    <option value="{{ m.id }}" {% if mfr == m.id|string %}selected{% endif %}>{{ m.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="mat" onchange="submitFilter()">
+    <option value="">All materials</option>
+    {% for m in materials %}
+    <option value="{{ m.id }}" {% if mat == m.id|string %}selected{% endif %}>{{ m.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="col" onchange="submitFilter()">
+    <option value="">All colors</option>
+    {% for c in colors %}
+    <option value="{{ c.id }}" {% if col == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+  {% if mfr or mat or col %}
+  <a href="/spools?q={{ q|urlencode }}&sort={{ sort }}" class="filter-clear">✕ Clear filters</a>
+  {% endif %}
+</form>
+
 {% if spools %}
 <figure class="overflow-auto">
   <table>
     <thead>
       <tr>
-        <th>Color</th>
-        <th>Material</th>
-        <th>Manufacturer</th>
-        <th>Weight</th>
-        <th>SKU</th>
-        <th class="qty-col">Qty</th>
+        {{ sort_th('color', 'Color') }}
+        {{ sort_th('material', 'Material') }}
+        {{ sort_th('manufacturer', 'Manufacturer') }}
+        {{ sort_th('weight', 'Weight') }}
+        {{ sort_th('sku', 'SKU') }}
+        {{ sort_th('qty', 'Qty', 'qty-col') }}
         <th></th>
       </tr>
     </thead>
@@ -62,8 +103,8 @@
     </tfoot>
   </table>
 </figure>
-{% elif q %}
-<p>No spools match "{{ q }}". <a href="/spools">Clear search</a></p>
+{% elif q or mfr or mat or col %}
+<p>No spools match your search or filters. <a href="/spools">Clear all</a></p>
 {% else %}
 <article class="empty-state">
   <p>No spools yet.</p>
@@ -71,4 +112,12 @@
      or <a href="/import" role="button" class="outline">import one with AI</a></p>
 </article>
 {% endif %}
+
+<script>
+function submitFilter() {
+  var form = document.getElementById('filter-form');
+  form.querySelectorAll('select').forEach(function(s) { s.disabled = !s.value; });
+  form.submit();
+}
+</script>
 {% endblock %}

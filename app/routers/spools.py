@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select as sa_select
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import flash, verify_csrf
@@ -65,7 +65,15 @@ def home():
 
 
 @router.get("/spools")
-def list_spools(request: Request, q: str = "", db: Session = Depends(get_db)):
+def list_spools(
+    request: Request,
+    q: str = "",
+    sort: str = "manufacturer",
+    mfr: str = "",
+    mat: str = "",
+    col: str = "",
+    db: Session = Depends(get_db),
+):
     query = (
         db.query(Spool)
         .options(
@@ -89,12 +97,45 @@ def list_spools(request: Request, q: str = "", db: Session = Depends(get_db)):
                 Spool.sku.ilike(like),
             )
         )
-    spools = query.order_by(
-        func.lower(Manufacturer.name), func.lower(MaterialType.name), func.lower(Color.name)
-    ).all()
+    mfr_id = int(mfr) if mfr else None
+    mat_id = int(mat) if mat else None
+    col_id = int(col) if col else None
+    if mfr_id:
+        query = query.filter(Spool.manufacturer_id == mfr_id)
+    if mat_id:
+        query = query.filter(Spool.material_type_id == mat_id)
+    if col_id:
+        query = query.filter(Spool.color_id == col_id)
+
+    # Correlated subquery for qty — avoids duplicate-row issues with joinedload
+    _qty_subq = (
+        sa_select(SpoolInventory.qty)
+        .where(SpoolInventory.spool_id == Spool.id)
+        .correlate(Spool)
+        .scalar_subquery()
+    )
+    _SORT_MAP = {
+        "color":        func.lower(Color.name),
+        "material":     func.lower(MaterialType.name),
+        "manufacturer": func.lower(Manufacturer.name),
+        "weight":       Spool.weight,
+        "sku":          func.lower(Spool.sku),
+        "qty":          _qty_subq,
+    }
+    desc_sort = sort.startswith("-")
+    sort_key = sort.lstrip("-")
+    sort_expr = _SORT_MAP.get(sort_key, _SORT_MAP["manufacturer"])
+    if desc_sort:
+        sort_expr = sort_expr.desc()
+
+    spools = query.order_by(sort_expr).all()
     total_qty = sum(s.qty for s in spools)
     return templates.TemplateResponse(
-        request, "spool_list.html", {"spools": spools, "q": q, "total_qty": total_qty}
+        request, "spool_list.html", {
+            "spools": spools, "q": q, "total_qty": total_qty,
+            "sort": sort, "mfr": mfr, "mat": mat, "col": col,
+            **_lookup_lists(db),
+        }
     )
 
 

@@ -48,21 +48,38 @@ per-user directory adds nothing.
 
 ## Migration
 
-Runs inside `database._migrate_schema()` at startup, guarded by
-"`spools.user_id` does not exist". Fresh installs never hit it because
-`create_all` builds the final shape.
+`app/migrations.py::migrate_multi_user(db_path)` runs from `database.init_db()`
+at startup (after `create_all`) and from the Admin restore flow via
+`migrate_file()`, which upgrades an uploaded backup *before* it replaces the
+live file. It works on a raw `sqlite3` connection and is guarded by
+"`spools.user_id` does not exist". Fresh installs never hit the rebuild
+because `create_all` builds the final shape.
 
-1. `ALTER TABLE users ADD COLUMN is_admin ...`; set `is_admin = 1` on the
-   lowest-id user.
-2. **Instance-specific one-off** (clearly labelled, safe to delete later): if
-   there is exactly one user and no user named `jpaul`, insert `jpaul` with a
-   copy of that user's `hashed_password` and `is_admin = 0`. The data owner
-   is `jpaul`. In every other case the owner is the lowest-id user.
-3. Rebuild the four data tables, in one transaction with
-   `PRAGMA foreign_keys = OFF`: create `<table>_new` with the final schema,
-   `INSERT ... SELECT *, <owner_id>`, drop the old table, rename. Order:
-   manufacturers, material_types, colors, spools.
-4. `PRAGMA foreign_key_check` must return no rows before commit.
+1. `ALTER TABLE users ADD COLUMN is_admin ...` if missing; then, idempotently,
+   set `is_admin = 1` on the lowest-id user if nobody is an admin yet.
+2. If `spools.user_id` already exists, stop (already migrated).
+3. **Pre-check**: `PRAGMA foreign_key_check` on the old schema. The engine
+   never enforces foreign keys, so a production DB may already hold orphans
+   (a spool whose manufacturer was deleted, a stray `spool_inventory` row).
+   Any row aborts with a distinct `RuntimeError` ("... must be repaired
+   before upgrading") before anything is changed, instead of failing the
+   post-rebuild check on every restart.
+4. **Optional legacy-owner one-off**, gated by the `FILAMAN_LEGACY_OWNER`
+   environment variable (read at call time): if it is set, there is exactly
+   one user, and no user with that name exists, insert that user with a copy
+   of the existing user's `hashed_password` and `is_admin = 0`; it becomes
+   the data owner. In every other case (including the variable being unset,
+   the default) the owner is the lowest-id user.
+5. Rebuild the four data tables in one transaction with
+   `PRAGMA foreign_keys = OFF` and `PRAGMA legacy_alter_table = ON` (so the
+   rename does not rewrite `spool_inventory`'s FK to point at the renamed
+   table): `ALTER TABLE <table> RENAME TO <table>_old`, create the new tables
+   from the ORM metadata (`CreateTable(Base.metadata.tables[...])`),
+   `INSERT ... SELECT <old columns>, <owner_id> FROM <table>_old`, then drop
+   the `_old` tables in reverse order. Order: manufacturers, material_types,
+   colors, spools.
+6. `PRAGMA foreign_key_check` must return no rows before commit; otherwise
+   the transaction rolls back and the error propagates.
 
 `/setup` creates the first user with `is_admin = True`. `reset_db()` is
 unchanged (drop everything, back to `/setup`).
@@ -162,8 +179,10 @@ Coverage:
 - Admin: add user, reset password, delete user (data and image files gone,
   cannot delete self).
 - Migration: a fixture DB in the pre-multi-user schema with one `admin` user
-  and some rows migrates to `admin` (is_admin, no data) plus `jpaul`
-  (not admin, owns every row), with the new unique constraints present.
+  and some rows migrates, with `FILAMAN_LEGACY_OWNER=jpaul`, to `admin`
+  (is_admin, no data) plus `jpaul` (not admin, owns every row), with the
+  new unique constraints present; without the variable, `admin` keeps every
+  row. A DB with a dangling FK is refused before any change.
 
 ## Deployment for testing
 

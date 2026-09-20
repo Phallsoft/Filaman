@@ -17,7 +17,7 @@ tracking, just "I have 3 black PLA spools, 1kg each."
 - **Smart merging** — adding a spool identical to an existing one just bumps the quantity
 - **Clean, mobile-friendly UI** with light/dark theme
 - **Form-based auth** with first-run account setup
-- **Admin tools** — change password, one-click database backup/restore, and a (deliberately scary) database reset
+- **Admin tools** — manage user accounts, one-click database backup/restore, and a (deliberately scary) database reset; every user changes their own password under Settings
 
 ## Quickstart
 
@@ -47,7 +47,8 @@ at `/setup` is the admin; it adds other users from the Admin page (Settings → 
 available to everyone). Backups taken from the Admin page are plain SQLite files (no images) and
 can be restored from the same page. Upgrading an existing single-user database migrates it
 automatically at startup; the existing account keeps its inventory unless `FILAMAN_LEGACY_OWNER`
-names a new user to move it to.
+names a new user to move it to. After upgrading, log out and back in so the Admin link appears
+(sessions from before the upgrade do not carry the admin flag).
 
 ## Backup, restore, and moving to another host
 

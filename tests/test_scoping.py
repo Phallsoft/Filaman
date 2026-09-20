@@ -117,3 +117,27 @@ def test_ai_import_save_creates_lookups_for_importing_user_only(two_users):
     assert lookup_names(b, "manufacturers") == ["Polymaker"]
     assert lookup_names(a, "manufacturers") == []
     assert len(spool_ids(b)) == 1 and spool_ids(a) == []
+
+
+def test_cannot_update_own_spool_with_other_users_lookups(two_users):
+    import os
+    import sqlite3
+
+    a, b = two_users
+    ma, ta, ca = _seed(a)
+    sa = add_spool(a, ma, ta, ca)
+    mb, tb, cb = _seed(b)
+    token = csrf(a, "/spools")
+    r = a.post(f"/spools/{sa}", data={
+        "manufacturer_id": mb, "material_type_id": tb, "color_id": cb,
+        "weight": 1000, "qty": 1, "csrf_token": token,
+    })
+    assert r.status_code == 303
+    conn = sqlite3.connect(os.environ["DB_PATH"])
+    try:
+        row = conn.execute(
+            "SELECT manufacturer_id, material_type_id, color_id FROM spools WHERE id = ?", (sa,)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (ma, ta, ca)

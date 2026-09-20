@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
 from ..auth import flash, hash_password, require_admin, verify_csrf
-from ..database import get_db, reset_db
+from ..database import get_db, init_db, reset_db
 from ..models import Spool, User
 from ..services import backup as backup_svc
 from ..services.users import create_user, delete_user, validate_password
@@ -124,6 +124,7 @@ async def restore_backup(
             flash(request, f"Restore failed: {error}", "error")
             return RedirectResponse("/admin", status_code=303)
         backup_svc.restore_backup(tmp_path)
+        init_db()  # migrate a pre-multi-user backup now, not at the next restart
     finally:
         if os.path.exists(tmp_path):
             try:

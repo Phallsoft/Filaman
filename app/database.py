@@ -29,9 +29,12 @@ def get_db():
 
 def init_db():
     from . import models  # noqa: F401
+    from .migrations import migrate_multi_user
 
     Base.metadata.create_all(engine)
     _migrate_schema()
+    if migrate_multi_user(DB_PATH):
+        engine.dispose()  # pooled connections saw the old schema
 
 
 def _migrate_schema():

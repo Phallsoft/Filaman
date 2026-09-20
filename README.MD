@@ -39,8 +39,35 @@ Open http://localhost:8000 — you'll be prompted to create your account on firs
 | `DB_PATH` | `/data/filaman.db` (container) | SQLite database file location |
 | `MEDIA_DIR` | next to `DB_PATH` in `images/` | Local directory for stored spool images |
 
-The database lives in the `filaman-data` Docker volume. Backups taken from the Admin page are
-plain SQLite files and can be restored from the same page.
+The database and spool images live in the `filaman-data` Docker volume. Backups taken from the
+Admin page are plain SQLite files (no images) and can be restored from the same page.
+
+## Backup, restore, and moving to another host
+
+All persistent data is in the `filaman-data` volume (`/data` in the container): `filaman.db` and
+`images/spools/*.jpg`. The scripts below archive the whole volume; they stop the container briefly
+so the SQLite file is copied consistently. They run on Linux and in Git Bash on Windows.
+
+```bash
+scripts/backup.sh                 # -> backups/filaman-data-YYYYmmdd-HHMMSS.tgz
+scripts/backup.sh path/to/out.tgz # custom location
+scripts/restore.sh backups/filaman-data-20260101-120000.tgz   # replaces current data
+```
+
+To move to a new server:
+
+```bash
+# old host
+scripts/backup.sh
+scp backups/filaman-data-*.tgz .env user@server:~/filaman/
+
+# new host
+git clone https://github.com/Phallsoft/Filaman.git filaman && cd filaman
+scripts/restore.sh filaman-data-*.tgz   # creates the volume if needed
+docker compose up -d --build
+```
+
+Copy `.env` too: keeping the same `SECRET_KEY` preserves existing logins. `backups/` is gitignored.
 
 ## Local development
 

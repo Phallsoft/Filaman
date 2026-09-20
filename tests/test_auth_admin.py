@@ -132,3 +132,54 @@ def test_delete_user_removes_their_data_and_images(client, client2, media_dir):
     for table in ("spools", "spool_inventory", "manufacturers", "material_types", "colors"):
         assert conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0, table
     conn.close()
+
+
+from app.auth import hash_password
+from tests.test_migration import OLD_DATA, OLD_SCHEMA
+
+
+def _old_schema_db_bytes(tmp_path, password="password123", dangling=False) -> bytes:
+    """A pre-multi-user backup with a real password hash for 'admin'."""
+    path = tmp_path / "upload.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(OLD_SCHEMA + OLD_DATA)
+    conn.execute("UPDATE users SET hashed_password = ?", (hash_password(password),))
+    if dangling:
+        conn.execute("DELETE FROM manufacturers WHERE id = 1")  # spool 7 now points at nothing
+    conn.commit()
+    conn.close()
+    return path.read_bytes()
+
+
+def _post_restore(client, payload: bytes):
+    token = csrf(client, "/admin")
+    return client.post(
+        "/admin/restore",
+        data={"csrf_token": token},
+        files={"file": ("backup.db", payload, "application/octet-stream")},
+    )
+
+
+def test_restore_of_unmigratable_backup_leaves_live_db_untouched(client, tmp_path):
+    do_setup(client)
+    r = _post_restore(client, _old_schema_db_bytes(tmp_path, dangling=True))
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+    assert "Restore failed" in client.get("/admin").text
+    # still logged in against the unchanged live DB
+    assert client.get("/spools").status_code == 200
+    conn = sqlite3.connect(os.environ["DB_PATH"])
+    try:
+        assert conn.execute("SELECT username FROM users").fetchall() == [("admin",)]
+    finally:
+        conn.close()
+
+
+def test_restore_of_old_schema_backup_migrates_it(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("FILAMAN_LEGACY_OWNER", "jpaul")
+    do_setup(client)
+    r = _post_restore(client, _old_schema_db_bytes(tmp_path))
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+    login(client, "admin", "password123")
+    html = client.get("/admin").text
+    assert "admin" in html and "jpaul" in html
+    assert _user_row("jpaul")[1] == 0 and _user_row("admin")[1] == 1

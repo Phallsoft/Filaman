@@ -10,6 +10,7 @@ from starlette.background import BackgroundTask
 
 from ..auth import flash, hash_password, require_admin, verify_csrf
 from ..database import get_db, init_db, reset_db
+from ..migrations import migrate_file
 from ..models import Spool, User
 from ..services import backup as backup_svc
 from ..services.users import create_user, delete_user, validate_password
@@ -112,6 +113,7 @@ async def restore_backup(
     request: Request,
     file: UploadFile = File(...),
     csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
 ):
     verify_csrf(request, csrf_token)
     fd, tmp_path = tempfile.mkstemp(suffix=".db")
@@ -123,8 +125,16 @@ async def restore_backup(
         if error:
             flash(request, f"Restore failed: {error}", "error")
             return RedirectResponse("/admin", status_code=303)
+        # Upgrade the upload BEFORE it becomes the live DB, so a file the
+        # migration rejects never replaces a working database.
+        try:
+            migrate_file(tmp_path)
+        except Exception as e:
+            flash(request, f"Restore failed: {e}", "error")
+            return RedirectResponse("/admin", status_code=303)
+        db.close()  # release this request's connection so no handle on the live DB survives the swap
         backup_svc.restore_backup(tmp_path)
-        init_db()  # migrate a pre-multi-user backup now, not at the next restart
+        init_db()  # safety net; the upload is already migrated
     finally:
         if os.path.exists(tmp_path):
             try:

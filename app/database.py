@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import DB_PATH
@@ -29,21 +29,13 @@ def get_db():
 
 def init_db():
     from . import models  # noqa: F401
-    from .migrations import migrate_multi_user
+    from .migrations import add_spool_image_path, migrate_multi_user
 
     Base.metadata.create_all(engine)
-    _migrate_schema()
-    if migrate_multi_user(DB_PATH):
+    changed = add_spool_image_path(DB_PATH)
+    changed = migrate_multi_user(DB_PATH) or changed
+    if changed:
         engine.dispose()  # pooled connections saw the old schema
-
-
-def _migrate_schema():
-    inspector = inspect(engine)
-    if "spools" in inspector.get_table_names():
-        columns = {col["name"] for col in inspector.get_columns("spools")}
-        with engine.begin() as conn:
-            if "image_path" not in columns:
-                conn.execute(text("ALTER TABLE spools ADD COLUMN image_path VARCHAR(512)"))
 
 
 def reset_db():

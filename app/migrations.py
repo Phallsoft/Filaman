@@ -40,6 +40,26 @@ def _create_sql(table: str) -> str:
     return str(CreateTable(Base.metadata.tables[table]).compile(dialect=sqlite_dialect.dialect()))
 
 
+def add_spool_image_path(db_path: str) -> bool:
+    """Add spools.image_path (pre-image-support databases). Returns True if it was added."""
+    conn = sqlite3.connect(db_path)
+    try:
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "spools" not in tables or "image_path" in _columns(conn, "spools"):
+            return False
+        conn.execute("ALTER TABLE spools ADD COLUMN image_path VARCHAR(512)")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def migrate_file(db_path: str) -> None:
+    """Bring a SQLite file (live DB or an uploaded backup) up to the current schema."""
+    add_spool_image_path(db_path)
+    migrate_multi_user(db_path)
+
+
 def migrate_multi_user(db_path: str) -> bool:
     """Add users.is_admin and user_id to the data tables. Returns True if the rebuild ran."""
     conn = sqlite3.connect(db_path)

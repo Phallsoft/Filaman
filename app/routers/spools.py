@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, or_, select as sa_select
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import flash, verify_csrf
 from ..database import get_db
 from ..models import Color, Manufacturer, MaterialType, Spool, SpoolInventory
+from ..services.images import ImageError, delete_image, fetch_remote_image, save_spool_image
 from ..templating import templates
 
 router = APIRouter()
@@ -27,6 +28,7 @@ def merge_or_create_spool(
     sku: str | None,
     weight: int,
     qty: int,
+    image_path: str | None = None,
 ) -> tuple[Spool, bool]:
     """Create a spool, or increment qty on an identical existing one. Returns (spool, merged)."""
     sku = (sku or "").strip() or None
@@ -46,6 +48,8 @@ def merge_or_create_spool(
             existing.inventory.qty += qty
         else:
             existing.inventory = SpoolInventory(qty=qty)
+        if image_path and not existing.image_path:
+            existing.image_path = image_path
         return existing, True
     spool = Spool(
         manufacturer_id=manufacturer_id,
@@ -53,6 +57,7 @@ def merge_or_create_spool(
         color_id=color_id,
         sku=sku,
         weight=weight,
+        image_path=image_path,
     )
     spool.inventory = SpoolInventory(qty=qty)
     db.add(spool)
@@ -74,6 +79,7 @@ def list_spools(
     col: str = "",
     db: Session = Depends(get_db),
 ):
+    show_images = request.cookies.get("filaman_show_images", "1") != "0"
     query = (
         db.query(Spool)
         .options(
@@ -134,6 +140,7 @@ def list_spools(
         request, "spool_list.html", {
             "spools": spools, "q": q, "total_qty": total_qty,
             "sort": sort, "mfr": mfr, "mat": mat, "col": col,
+            "show_images": show_images,
             **_lookup_lists(db),
         }
     )
@@ -147,7 +154,7 @@ def new_spool(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/spools")
-def create_spool(
+async def create_spool(
     request: Request,
     manufacturer_id: int = Form(...),
     material_type_id: int = Form(...),
@@ -155,6 +162,9 @@ def create_spool(
     sku: str = Form(None),
     weight: int = Form(...),
     qty: int = Form(1),
+    image_file: UploadFile | None = File(None),
+    image_url: str = Form(None),
+    cropped_image: str = Form(None),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
 ):
@@ -162,15 +172,35 @@ def create_spool(
     if weight <= 0 or qty < 0:
         flash(request, "Weight must be positive and quantity cannot be negative.", "error")
         return RedirectResponse("/spools/new", status_code=303)
+    try:
+        image_path = await save_spool_image(
+            upload=image_file,
+            source_url=(image_url or "").strip() or None,
+            cropped_image=(cropped_image or "").strip() or None,
+        )
+    except ImageError as e:
+        flash(request, str(e), "error")
+        return RedirectResponse("/spools/new", status_code=303)
     spool, merged = merge_or_create_spool(
-        db, manufacturer_id, material_type_id, color_id, sku, weight, qty
+        db, manufacturer_id, material_type_id, color_id, sku, weight, qty, image_path
     )
+    if image_path and merged and spool.image_path != image_path:
+        delete_image(image_path)
     db.commit()
     if merged:
         flash(request, f"Identical spool already existed — quantity increased by {qty}.", "success")
     else:
         flash(request, f"Spool added with quantity {qty}.", "success")
     return RedirectResponse("/spools", status_code=303)
+
+
+@router.get("/spools/image-proxy")
+def image_proxy(url: str):
+    try:
+        content, content_type = fetch_remote_image(url)
+    except ImageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return Response(content, media_type=content_type)
 
 
 @router.get("/spools/{spool_id}/edit")
@@ -185,7 +215,7 @@ def edit_spool(request: Request, spool_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/spools/{spool_id}")
-def update_spool(
+async def update_spool(
     request: Request,
     spool_id: int,
     manufacturer_id: int = Form(...),
@@ -194,6 +224,10 @@ def update_spool(
     sku: str = Form(None),
     weight: int = Form(...),
     qty: int = Form(0),
+    image_file: UploadFile | None = File(None),
+    image_url: str = Form(None),
+    cropped_image: str = Form(None),
+    clear_image: str = Form(None),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
 ):
@@ -205,6 +239,22 @@ def update_spool(
     if weight <= 0 or qty < 0:
         flash(request, "Weight must be positive and quantity cannot be negative.", "error")
         return RedirectResponse(f"/spools/{spool_id}/edit", status_code=303)
+    if clear_image == "1":
+        delete_image(spool.image_path)
+        spool.image_path = None
+    else:
+        try:
+            image_path = await save_spool_image(
+                upload=image_file,
+                source_url=(image_url or "").strip() or None,
+                cropped_image=(cropped_image or "").strip() or None,
+                replace_path=spool.image_path,
+            )
+        except ImageError as e:
+            flash(request, str(e), "error")
+            return RedirectResponse(f"/spools/{spool_id}/edit", status_code=303)
+        if image_path:
+            spool.image_path = image_path
     spool.manufacturer_id = manufacturer_id
     spool.material_type_id = material_type_id
     spool.color_id = color_id
@@ -229,6 +279,7 @@ def delete_spool(
     verify_csrf(request, csrf_token)
     spool = db.get(Spool, spool_id)
     if spool:
+        delete_image(spool.image_path)
         db.delete(spool)
         db.commit()
         flash(request, "Spool deleted.", "success")

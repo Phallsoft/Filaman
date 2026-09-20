@@ -7,7 +7,7 @@
     <p>Edit anything that looks wrong, then save. Missing manufacturers, materials, and colors will be created automatically.</p>
   </hgroup>
 
-  <form method="post" action="/import/save">
+  <form method="post" action="/import/save" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <label>Manufacturer
@@ -48,6 +48,10 @@
     <label>SKU <small>(optional)</small>
       <input name="sku" value="{{ fields.sku or '' }}">
     </label>
+
+    {% with current_image_url='', image_candidates=image_candidates or [] %}
+      {% include "partials/_image_field.html" %}
+    {% endwith %}
 
     <div class="form-actions">
       <a href="/import" role="button" class="secondary outline">Cancel</a>

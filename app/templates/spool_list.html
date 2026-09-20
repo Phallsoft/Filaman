@@ -25,6 +25,10 @@
     <button type="submit" class="outline">Search</button>
   </form>
   <div class="page-actions">
+    <label class="image-toggle" title="Show or hide spool images">
+      <input type="checkbox" id="show-images-toggle" {% if show_images %}checked{% endif %}>
+      Images
+    </label>
     <a href="/import" role="button" class="outline">AI Import</a>
     <a href="/spools/new" role="button">+ Add Spool</a>
   </div>
@@ -59,9 +63,10 @@
 
 {% if spools %}
 <figure class="overflow-auto">
-  <table>
+  <table id="spools-table" class="{% if not show_images %}images-hidden{% endif %}">
     <thead>
       <tr>
+        <th class="image-col" {% if not show_images %}hidden{% endif %}>Image</th>
         {{ sort_th('color', 'Color') }}
         {{ sort_th('material', 'Material') }}
         {{ sort_th('manufacturer', 'Manufacturer') }}
@@ -74,6 +79,13 @@
     <tbody>
       {% for spool in spools %}
       <tr>
+        <td class="image-col" {% if not show_images %}hidden{% endif %}>
+          {% if spool.image_url %}
+          <img class="spool-thumb" src="{{ spool.image_url }}" alt="{{ spool.manufacturer.name }} {{ spool.material_type.name }} {{ spool.color.name }} spool">
+          {% else %}
+          <div class="spool-thumb spool-thumb-empty">No Image</div>
+          {% endif %}
+        </td>
         <td>
           <span class="swatch" style="background: {{ spool.color.color_code or 'transparent' }}"></span>
           {{ spool.color.name }}
@@ -96,7 +108,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="5"><strong>Total spools</strong></td>
+        <td id="total-label-cell" colspan="{{ 6 if show_images else 5 }}"><strong>Total spools</strong></td>
         <td class="qty-col"><strong>{{ total_qty }}</strong></td>
         <td></td>
       </tr>
@@ -118,6 +130,19 @@ function submitFilter() {
   var form = document.getElementById('filter-form');
   form.querySelectorAll('select').forEach(function(s) { s.disabled = !s.value; });
   form.submit();
+}
+
+var imageToggle = document.getElementById('show-images-toggle');
+if (imageToggle) {
+  imageToggle.addEventListener('change', function () {
+    var show = imageToggle.checked;
+    document.cookie = 'filaman_show_images=' + (show ? '1' : '0') + '; Path=/; Max-Age=31536000; SameSite=Lax';
+    var table = document.getElementById('spools-table');
+    if (table) table.classList.toggle('images-hidden', !show);
+    document.querySelectorAll('.image-col').forEach(function (cell) { cell.hidden = !show; });
+    var totalLabelCell = document.getElementById('total-label-cell');
+    if (totalLabelCell) totalLabelCell.colSpan = show ? 6 : 5;
+  });
 }
 </script>
 {% endblock %}

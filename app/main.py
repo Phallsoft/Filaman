@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from .config import SECRET_KEY
+from .config import MEDIA_DIR, SECRET_KEY
 from .database import SessionLocal, init_db
 from .models import User
 from .routers import admin, ai_import, auth_routes, lookups, spools
@@ -50,6 +50,8 @@ async def auth_middleware(request: Request, call_next):
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, same_site="lax")
 
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+Path(MEDIA_DIR).mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 app.include_router(auth_routes.router)
 app.include_router(spools.router)

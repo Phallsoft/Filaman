@@ -56,6 +56,7 @@ class Spool(Base):
     color_id: Mapped[int] = mapped_column(ForeignKey("colors.id"), nullable=False)
     sku: Mapped[str | None] = mapped_column(String(128), nullable=True)
     weight: Mapped[int] = mapped_column(Integer, nullable=False)  # grams
+    image_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     manufacturer: Mapped[Manufacturer] = relationship(back_populates="spools")
     material_type: Mapped[MaterialType] = relationship(back_populates="spools")
@@ -67,6 +68,10 @@ class Spool(Base):
     @property
     def qty(self) -> int:
         return self.inventory.qty if self.inventory else 0
+
+    @property
+    def image_url(self) -> str | None:
+        return f"/media/{self.image_path}" if self.image_path else None
 
 
 class SpoolInventory(Base):

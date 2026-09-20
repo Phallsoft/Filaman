@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import DB_PATH
@@ -31,6 +31,16 @@ def init_db():
     from . import models  # noqa: F401
 
     Base.metadata.create_all(engine)
+    _migrate_schema()
+
+
+def _migrate_schema():
+    inspector = inspect(engine)
+    if "spools" in inspector.get_table_names():
+        columns = {col["name"] for col in inspector.get_columns("spools")}
+        with engine.begin() as conn:
+            if "image_path" not in columns:
+                conn.execute(text("ALTER TABLE spools ADD COLUMN image_path VARCHAR(512)"))
 
 
 def reset_db():

@@ -26,6 +26,10 @@ if not SECRET_KEY:
     print("WARNING: SECRET_KEY not set; generated a random one (sessions reset on restart).")
 
 DB_PATH = os.environ.get("DB_PATH", "./data/filaman.db")
+MEDIA_DIR = os.environ.get(
+    "MEDIA_DIR",
+    str(Path(DB_PATH).expanduser().resolve().parent / "images"),
+)
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 AI_API_KEY = os.environ.get("AI_API_KEY", "")

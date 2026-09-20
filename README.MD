@@ -7,9 +7,11 @@ tracking, just "I have 3 black PLA spools, 1kg each."
 ## Features
 
 - **Quantity-based inventory** — one record per spool type with a qty (and one-tap ± adjusters)
+- **Spool images** — upload an image, use an image URL, crop/position it, or choose images detected during AI import
 - **Quick-create everywhere** — add a manufacturer, material, or color inline without leaving the spool form
 - **AI import** — paste a product page URL or product text; the configured LLM extracts manufacturer,
   material, color (with hex code), SKU, weight, and pack quantity for you to review, edit, and save.
+    Product page images are detected from metadata such as `og:image` so you can choose one during review.
   Missing manufacturers/materials/colors are created automatically.
 - **Smart merging** — adding a spool identical to an existing one just bumps the quantity
 - **Clean, mobile-friendly UI** with light/dark theme
@@ -35,6 +37,7 @@ Open http://localhost:8000 — you'll be prompted to create your account on firs
 | `AI_MODEL` | `openai/gpt-4o-mini` | Model name to use for extraction |
 | `BRIGHTDATA_MCP_URL` | _(empty)_ | Optional [Bright Data MCP](https://brightdata.com) endpoint (`https://mcp.brightdata.com/mcp?token=...`). Used as a fallback when a direct page fetch fails or is blocked by bot protection (e.g. Amazon). |
 | `DB_PATH` | `/data/filaman.db` (container) | SQLite database file location |
+| `MEDIA_DIR` | next to `DB_PATH` in `images/` | Local directory for stored spool images |
 
 The database lives in the `filaman-data` Docker volume. Backups taken from the Admin page are
 plain SQLite files and can be restored from the same page.

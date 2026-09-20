@@ -1,0 +1,198 @@
+{% set current_image_url = current_image_url or '' %}
+{% set image_url = image_url or (image_candidates[0] if image_candidates else '') %}
+<div class="image-field" data-image-editor data-current-image="{{ current_image_url }}">
+  <label>Spool image <small>(optional)</small></label>
+  <div class="image-editor-grid">
+    <div class="image-crop-frame">
+      <canvas width="360" height="360" data-image-canvas></canvas>
+      <div class="image-empty" data-image-empty>No Image</div>
+    </div>
+    <div class="image-controls">
+      <input type="hidden" name="cropped_image" data-cropped-image>
+      <input type="hidden" name="clear_image" data-clear-image>
+      <label>Choose file
+        <input type="file" name="image_file" accept="image/*" data-image-file>
+      </label>
+      <label>Image URL
+        <input type="url" name="image_url" value="{{ image_url }}" placeholder="https://example.com/image.jpg" data-image-url>
+      </label>
+      <label>Zoom
+        <input type="range" min="1" max="3" step="0.01" value="1" data-image-zoom>
+      </label>
+      <div class="image-buttons">
+        <button type="button" class="outline secondary" data-image-reset>Center</button>
+        <button type="button" class="outline secondary" data-image-clear>Remove</button>
+      </div>
+      {% if image_candidates %}
+      <fieldset class="image-candidates">
+        <legend>Detected images</legend>
+        <div class="image-candidate-list">
+          {% for candidate in image_candidates %}
+          <label class="image-candidate">
+            <input type="radio" name="image_candidate" value="{{ candidate }}" data-image-candidate {% if loop.first %}checked{% endif %}>
+            <img src="/spools/image-proxy?url={{ candidate|urlencode }}" alt="Detected image {{ loop.index }}" loading="lazy">
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function proxySrc(value) {
+    return /^https?:\/\//i.test(value) ? "/spools/image-proxy?url=" + encodeURIComponent(value) : value;
+  }
+
+  document.querySelectorAll("[data-image-editor]").forEach(function (editor) {
+    var canvas = editor.querySelector("[data-image-canvas]");
+    var ctx = canvas.getContext("2d");
+    var empty = editor.querySelector("[data-image-empty]");
+    var fileInput = editor.querySelector("[data-image-file]");
+    var urlInput = editor.querySelector("[data-image-url]");
+    var zoomInput = editor.querySelector("[data-image-zoom]");
+    var croppedInput = editor.querySelector("[data-cropped-image]");
+    var clearInput = editor.querySelector("[data-clear-image]");
+    var resetButton = editor.querySelector("[data-image-reset]");
+    var clearButton = editor.querySelector("[data-image-clear]");
+    var currentImage = editor.dataset.currentImage || "";
+    var image = null;
+    var offsetX = 0;
+    var offsetY = 0;
+    var dragging = false;
+    var lastX = 0;
+    var lastY = 0;
+    var dirty = Boolean(urlInput.value && !currentImage);
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!image) {
+        empty.hidden = false;
+        return;
+      }
+      empty.hidden = true;
+      var baseScale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+      var scale = baseScale * Number(zoomInput.value || 1);
+      var width = image.naturalWidth * scale;
+      var height = image.naturalHeight * scale;
+      var x = (canvas.width - width) / 2 + offsetX;
+      var y = (canvas.height - height) / 2 + offsetY;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, x, y, width, height);
+    }
+
+    function loadImage(src, markDirty) {
+      if (!src) {
+        image = null;
+        render();
+        return;
+      }
+      var next = new Image();
+      next.onload = function () {
+        image = next;
+        offsetX = 0;
+        offsetY = 0;
+        zoomInput.value = "1";
+        dirty = Boolean(markDirty);
+        clearInput.value = "";
+        render();
+      };
+      next.onerror = function () {
+        image = null;
+        render();
+      };
+      next.src = proxySrc(src);
+    }
+
+    function pointerPosition(event) {
+      var rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    fileInput.addEventListener("change", function () {
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () { loadImage(reader.result, true); };
+      reader.readAsDataURL(file);
+    });
+
+    urlInput.addEventListener("change", function () {
+      fileInput.value = "";
+      loadImage(urlInput.value.trim(), true);
+    });
+
+    editor.querySelectorAll("[data-image-candidate]").forEach(function (radio) {
+      radio.addEventListener("change", function () {
+        if (!radio.checked) return;
+        urlInput.value = radio.value;
+        fileInput.value = "";
+        loadImage(radio.value, true);
+      });
+    });
+
+    zoomInput.addEventListener("input", function () {
+      if (image) dirty = true;
+      render();
+    });
+
+    resetButton.addEventListener("click", function () {
+      offsetX = 0;
+      offsetY = 0;
+      zoomInput.value = "1";
+      if (image) dirty = true;
+      render();
+    });
+
+    clearButton.addEventListener("click", function () {
+      image = null;
+      fileInput.value = "";
+      urlInput.value = "";
+      croppedInput.value = "";
+      clearInput.value = "1";
+      dirty = false;
+      render();
+    });
+
+    canvas.addEventListener("pointerdown", function (event) {
+      if (!image) return;
+      dragging = true;
+      var pos = pointerPosition(event);
+      lastX = pos.x;
+      lastY = pos.y;
+      canvas.setPointerCapture(event.pointerId);
+    });
+
+    canvas.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var pos = pointerPosition(event);
+      offsetX += pos.x - lastX;
+      offsetY += pos.y - lastY;
+      lastX = pos.x;
+      lastY = pos.y;
+      dirty = true;
+      render();
+    });
+
+    canvas.addEventListener("pointerup", function () { dragging = false; });
+    canvas.addEventListener("pointercancel", function () { dragging = false; });
+
+    var form = editor.closest("form");
+    if (form) {
+      form.addEventListener("submit", function () {
+        if (image && dirty && clearInput.value !== "1") {
+          croppedInput.value = canvas.toDataURL("image/jpeg", 0.88);
+        }
+      });
+    }
+
+    loadImage(currentImage || urlInput.value.trim(), Boolean(urlInput.value && !currentImage));
+  });
+})();
+</script>

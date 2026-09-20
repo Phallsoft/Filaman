@@ -41,6 +41,38 @@ class _TextExtractor(HTMLParser):
                 self.chunks.append(text)
 
 
+class _ImageCandidateExtractor(HTMLParser):
+    META_NAMES = {
+        "og:image", "og:image:url", "og:image:secure_url",
+        "twitter:image", "twitter:image:src", "image", "thumbnail",
+    }
+
+    def __init__(self, base_url: str):
+        super().__init__()
+        self.base_url = base_url
+        self.candidates: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = {k.lower(): v for k, v in attrs if k and v}
+        if tag == "meta":
+            key = (attrs.get("property") or attrs.get("name") or "").lower()
+            if key in self.META_NAMES:
+                self._add(attrs.get("content"))
+        elif tag == "link":
+            rel = (attrs.get("rel") or "").lower()
+            if "image_src" in rel or "preload" in rel and attrs.get("as") == "image":
+                self._add(attrs.get("href"))
+        elif tag == "img":
+            self._add(attrs.get("src") or attrs.get("data-src"))
+
+    def _add(self, url: str | None):
+        if not url:
+            return
+        candidate = urljoin(self.base_url, url.strip())
+        if urlparse(candidate).scheme in ("http", "https") and candidate not in self.candidates:
+            self.candidates.append(candidate)
+
+
 def _assert_public_host(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -70,6 +102,22 @@ def fetch_page_text(url: str) -> tuple[str, bool]:
     except ImportError_:
         if config.BRIGHTDATA_MCP_URL:
             return fetch_via_brightdata(url), True
+        raise
+
+
+def fetch_page_data(url: str) -> tuple[str, bool, list[str]]:
+    """Fetch visible text and image candidates from a URL.
+
+    Returns (text, used_brightdata, image_candidates).
+    """
+    if urlparse(url).scheme not in ("http", "https"):
+        raise ImportError_("Only http(s) URLs are supported.")
+    try:
+        text, image_candidates = _fetch_direct_page(url)
+        return text, False, image_candidates
+    except ImportError_:
+        if config.BRIGHTDATA_MCP_URL:
+            return fetch_via_brightdata(url), True, []
         raise
 
 
@@ -142,6 +190,13 @@ def fetch_via_brightdata(url: str) -> str:
 
 def _fetch_direct(url: str) -> str:
     """Fetch a URL directly with SSRF guards and return its visible text."""
+    text, _ = _fetch_direct_page(url)
+    return text
+
+
+def _fetch_direct_page(url: str) -> tuple[str, list[str]]:
+    """Fetch a URL directly with SSRF guards and return visible text plus images."""
+    final_url = url
     headers = {"User-Agent": "Mozilla/5.0 (compatible; Filaman/1.0)"}
     with httpx.Client(timeout=15, follow_redirects=False, headers=headers) as client:
         for _ in range(MAX_REDIRECTS + 1):
@@ -155,20 +210,24 @@ def _fetch_direct(url: str) -> str:
                 continue
             if resp.status_code >= 400:
                 raise ImportError_(f"Page returned HTTP {resp.status_code}.")
+            final_url = str(resp.url)
             break
         else:
             raise ImportError_("Too many redirects.")
 
     content = resp.content[:MAX_BYTES]
+    html = content.decode(resp.encoding or "utf-8", errors="replace")
     parser = _TextExtractor()
+    image_parser = _ImageCandidateExtractor(final_url)
     try:
-        parser.feed(content.decode(resp.encoding or "utf-8", errors="replace"))
+        parser.feed(html)
+        image_parser.feed(html)
     except Exception:
         raise ImportError_("Could not parse page content.")
     text = "\n".join(parser.chunks)
     if not text.strip():
         raise ImportError_("Page contained no readable text.")
-    return text[:MAX_TEXT_CHARS]
+    return text[:MAX_TEXT_CHARS], image_parser.candidates[:8]
 
 
 def has_extracted_anything(fields: dict) -> bool:

@@ -46,9 +46,23 @@ def migrate_multi_user(db_path: str) -> bool:
             return False  # empty DB; create_all will build the final schema
         if "is_admin" not in _columns(conn, "users"):
             conn.execute("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0")
-            conn.execute("UPDATE users SET is_admin = 1 WHERE id = (SELECT min(id) FROM users)")
+        # Idempotent: promote the lowest-id user only if nobody is an admin yet.
+        conn.execute(
+            "UPDATE users SET is_admin = 1 WHERE id = (SELECT min(id) FROM users)"
+            " AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1)"
+        )
         if "user_id" in _columns(conn, "spools"):
             return False
+
+        # The engine never enforces foreign keys, so an old DB may already hold
+        # orphans (e.g. a spool whose manufacturer was deleted). Refuse up front
+        # instead of failing the post-rebuild check on every restart.
+        problems = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if problems:
+            raise RuntimeError(
+                "Database has dangling foreign-key references that must be repaired "
+                f"before upgrading: {problems[:5]}"
+            )
 
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("PRAGMA legacy_alter_table = ON")  # RENAME must not rewrite FKs in other tables

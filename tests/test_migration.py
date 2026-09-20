@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from app.migrations import migrate_multi_user
 
 OLD_SCHEMA = """
@@ -87,6 +89,16 @@ def test_migrates_single_user_db_to_admin_plus_jpaul(tmp_path):
     assert not any(n.endswith("_old") for n in names)
     sql = _q(db, "SELECT sql FROM sqlite_master WHERE name='spools'")[0][0]
     assert "user_id" in sql and "uq_spool_identity" in sql
+    # spool_inventory must still point at the rebuilt spools table, not the renamed one
+    inv_fks = {r[2] for r in _q(db, "PRAGMA foreign_key_list(spool_inventory)")}
+    assert inv_fks == {"spools"}
+    assert "users" in {r[2] for r in _q(db, "PRAGMA foreign_key_list(spools)")}
+    for table, constraint in [
+        ("manufacturers", "uq_manufacturer_user_name"),
+        ("material_types", "uq_material_type_user_name"),
+        ("colors", "uq_color_user_name"),
+    ]:
+        assert constraint in _q(db, f"SELECT sql FROM sqlite_master WHERE name='{table}'")[0][0]
 
 
 def test_migration_is_idempotent(tmp_path):
@@ -118,3 +130,36 @@ def test_fresh_db_is_untouched(tmp_path):
     conn.commit()
     conn.close()
     assert migrate_multi_user(db) is False
+
+
+def test_dangling_fk_in_old_db_aborts_before_rebuild(tmp_path):
+    db = str(tmp_path / "old.db")
+    _make_old_db(db)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM manufacturers WHERE id = 1")  # spool 7 now points at nothing
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(RuntimeError, match="repaired before upgrading"):
+        migrate_multi_user(db)
+
+    names = {r[0] for r in _q(db, "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert names == {"users", "manufacturers", "material_types", "colors", "spools", "spool_inventory"}
+    assert "user_id" not in {r[1] for r in _q(db, "PRAGMA table_info(spools)")}
+    assert _q(db, "SELECT id, username FROM users") == [(1, "admin")]
+    assert _q(db, "SELECT id, manufacturer_id, sku FROM spools") == [(7, 1, "SKU-1")]
+    assert _q(db, "SELECT spool_id, qty FROM spool_inventory") == [(7, 3)]
+    assert _q(db, "SELECT id FROM material_types") == [(1,)]
+    assert _q(db, "SELECT id FROM colors") == [(1,)]
+
+
+def test_promotes_lowest_user_when_is_admin_column_exists_but_nobody_is_admin(tmp_path):
+    db = str(tmp_path / "half.db")
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, hashed_password TEXT, is_admin BOOLEAN NOT NULL DEFAULT 0)")
+    conn.execute("CREATE TABLE spools (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL)")
+    conn.execute("INSERT INTO users (id, username, hashed_password) VALUES (5, 'later', 'h'), (3, 'first', 'h')")
+    conn.commit()
+    conn.close()
+    assert migrate_multi_user(db) is False
+    assert _q(db, "SELECT id, is_admin FROM users ORDER BY id") == [(3, 1), (5, 0)]

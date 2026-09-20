@@ -52,12 +52,13 @@ class Spool(Base):
     __tablename__ = "spools"
     __table_args__ = (
         UniqueConstraint(
-            "manufacturer_id", "material_type_id", "color_id", "weight", "sku",
+            "user_id", "manufacturer_id", "material_type_id", "color_id", "weight", "sku",
             name="uq_spool_identity",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturers.id"), nullable=False)
     material_type_id: Mapped[int] = mapped_column(ForeignKey("material_types.id"), nullable=False)
     color_id: Mapped[int] = mapped_column(ForeignKey("colors.id"), nullable=False)

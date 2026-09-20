@@ -121,7 +121,7 @@ async def save_import(
         flash(request, "Manufacturer, material, and color are required.", "error")
         return RedirectResponse("/import", status_code=303)
 
-    spool, merged = merge_or_create_spool(db, mfg.id, mat.id, col.id, sku, weight, qty, image_path)
+    spool, merged = merge_or_create_spool(db, user.id, mfg.id, mat.id, col.id, sku, weight, qty, image_path)
     if image_path and merged and spool.image_path != image_path:
         delete_image(image_path)
     db.commit()

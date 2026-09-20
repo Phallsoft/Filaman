@@ -23,9 +23,7 @@ RESET_PHRASE = "Yes, Really Reset The Database"
 @router.get("")
 def admin_page(request: Request, db: Session = Depends(get_db)):
     users = db.query(User).order_by(User.id).all()
-    spool_counts = dict(
-        db.query(Spool.user_id, func.count(Spool.id)).group_by(Spool.user_id).all()
-    ) if hasattr(Spool, "user_id") else {}
+    spool_counts = dict(db.query(Spool.user_id, func.count(Spool.id)).group_by(Spool.user_id).all())
     return templates.TemplateResponse(
         request, "admin.html",
         {"reset_phrase": RESET_PHRASE, "users": users, "spool_counts": spool_counts},

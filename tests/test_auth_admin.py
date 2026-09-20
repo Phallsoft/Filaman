@@ -104,3 +104,31 @@ def test_admin_delete_user_and_cannot_delete_self(client, client2):
     assert client2.get("/spools").headers["location"] == "/login"
     client.post(f"/admin/users/{admin_id}/delete", data={"confirm_text": "admin", "csrf_token": token})
     assert _user_row("admin") is not None
+
+
+from tests.helpers import add_lookup, add_spool, lookup_names, spool_ids
+
+
+def test_delete_user_removes_their_data_and_images(client, client2, media_dir):
+    do_setup(client)
+    add_user(client, "bob")
+    login(client2, "bob", "password123")
+    m = add_lookup(client2, "manufacturers", "M")
+    t = add_lookup(client2, "materials", "T")
+    c = add_lookup(client2, "colors", "C")
+    sid = add_spool(client2, m, t, c)
+    # give the spool an image file on disk
+    img_dir = media_dir / "spools"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    (img_dir / "bobpic.jpg").write_bytes(b"x")
+    conn = sqlite3.connect(os.environ["DB_PATH"])
+    conn.execute("UPDATE spools SET image_path='spools/bobpic.jpg' WHERE id=?", (sid,))
+    conn.commit()
+    bob_id = _user_row("bob")[0]
+    token = csrf(client, "/admin")
+    client.post(f"/admin/users/{bob_id}/delete", data={"confirm_text": "bob", "csrf_token": token})
+    assert _user_row("bob") is None
+    assert not (img_dir / "bobpic.jpg").exists()
+    for table in ("spools", "spool_inventory", "manufacturers", "material_types", "colors"):
+        assert conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0, table
+    conn.close()

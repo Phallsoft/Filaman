@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 
 from ..auth import hash_password
-from ..models import User
+from ..models import Color, Manufacturer, MaterialType, Spool, User
+from .images import delete_image
 
 MIN_PASSWORD = 8
 
@@ -29,6 +30,12 @@ def create_user(db: Session, username: str, password: str, *, is_admin: bool = F
 
 
 def delete_user(db: Session, user: User) -> None:
-    """Delete the account. (Task 4 extends this to remove the user's data and images.)"""
+    """Delete the account and everything it owns: spools (+inventory, +image files) and lookups."""
+    for spool in db.query(Spool).filter(Spool.user_id == user.id).all():
+        delete_image(spool.image_path)
+        db.delete(spool)  # inventory row cascades via the relationship
+    db.flush()
+    for model in (Manufacturer, MaterialType, Color):
+        db.query(model).filter(model.user_id == user.id).delete(synchronize_session=False)
     db.delete(user)
     db.flush()

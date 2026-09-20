@@ -57,3 +57,32 @@ def add_lookup(client, entity, name, **extra) -> int:
 def lookup_names(client, entity) -> list[str]:
     html = client.get(f"/{entity}").text
     return re.findall(r'name="name" value="([^"]*)" form="edit-\d+"', html)
+
+
+def add_spool(client, mfg_id, mat_id, col_id, weight=1000, qty=1, sku=None) -> int:
+    token = csrf(client, "/spools/new")
+    data = {
+        "manufacturer_id": mfg_id, "material_type_id": mat_id, "color_id": col_id,
+        "weight": weight, "qty": qty, "csrf_token": token,
+    }
+    if sku:
+        data["sku"] = sku
+    r = client.post("/spools", data=data)
+    assert r.status_code == 303 and r.headers["location"] == "/spools", r.text
+    ids = spool_ids(client)
+    assert ids, "spool not created"
+    return ids[-1]
+
+
+def spool_ids(client) -> list[int]:
+    html = client.get("/spools").text
+    return sorted({int(x) for x in re.findall(r'/spools/(\d+)/edit', html)})
+
+
+def spool_qty(client, spool_id) -> int:
+    """Read qty from the edit form (`<input type="number" name="qty" ... value="N">`)."""
+    r = client.get(f"/spools/{spool_id}/edit")
+    assert r.status_code == 200, f"edit page -> {r.status_code}"
+    m = re.search(r'name="qty"[^>]*value="(\d+)"', r.text)
+    assert m, "qty not found"
+    return int(m.group(1))

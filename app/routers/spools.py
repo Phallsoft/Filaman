@@ -4,7 +4,7 @@ from sqlalchemy import func, or_, select as sa_select
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import current_user, flash, verify_csrf
-from ..database import get_db
+from ..database import get_db, get_owned
 from ..models import Color, Manufacturer, MaterialType, Spool, SpoolInventory, User
 from ..services.images import ImageError, delete_image, fetch_remote_image, save_spool_image
 from ..templating import templates
@@ -20,8 +20,17 @@ def _lookup_lists(db: Session, user_id: int) -> dict:
     }
 
 
+def _lookups_belong_to(db: Session, user_id: int, manufacturer_id: int, material_type_id: int, color_id: int) -> bool:
+    return (
+        get_owned(db, Manufacturer, manufacturer_id, user_id) is not None
+        and get_owned(db, MaterialType, material_type_id, user_id) is not None
+        and get_owned(db, Color, color_id, user_id) is not None
+    )
+
+
 def merge_or_create_spool(
     db: Session,
+    user_id: int,
     manufacturer_id: int,
     material_type_id: int,
     color_id: int,
@@ -35,6 +44,7 @@ def merge_or_create_spool(
     existing = (
         db.query(Spool)
         .filter(
+            Spool.user_id == user_id,
             Spool.manufacturer_id == manufacturer_id,
             Spool.material_type_id == material_type_id,
             Spool.color_id == color_id,
@@ -52,6 +62,7 @@ def merge_or_create_spool(
             existing.image_path = image_path
         return existing, True
     spool = Spool(
+        user_id=user_id,
         manufacturer_id=manufacturer_id,
         material_type_id=material_type_id,
         color_id=color_id,
@@ -92,6 +103,7 @@ def list_spools(
         .join(Manufacturer)
         .join(MaterialType)
         .join(Color)
+        .filter(Spool.user_id == user.id)
     )
     q = q.strip()
     if q:
@@ -168,10 +180,14 @@ async def create_spool(
     cropped_image: str = Form(None),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     verify_csrf(request, csrf_token)
     if weight <= 0 or qty < 0:
         flash(request, "Weight must be positive and quantity cannot be negative.", "error")
+        return RedirectResponse("/spools/new", status_code=303)
+    if not _lookups_belong_to(db, user.id, manufacturer_id, material_type_id, color_id):
+        flash(request, "Please choose a manufacturer, material, and color from your lists.", "error")
         return RedirectResponse("/spools/new", status_code=303)
     try:
         image_path = await save_spool_image(
@@ -183,7 +199,7 @@ async def create_spool(
         flash(request, str(e), "error")
         return RedirectResponse("/spools/new", status_code=303)
     spool, merged = merge_or_create_spool(
-        db, manufacturer_id, material_type_id, color_id, sku, weight, qty, image_path
+        db, user.id, manufacturer_id, material_type_id, color_id, sku, weight, qty, image_path
     )
     if image_path and merged and spool.image_path != image_path:
         delete_image(image_path)
@@ -196,7 +212,7 @@ async def create_spool(
 
 
 @router.get("/spools/image-proxy")
-def image_proxy(url: str):
+def image_proxy(url: str, user: User = Depends(current_user)):
     try:
         content, content_type = fetch_remote_image(url)
     except ImageError as e:
@@ -211,7 +227,7 @@ def edit_spool(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    spool = db.get(Spool, spool_id)
+    spool = get_owned(db, Spool, spool_id, user.id)
     if not spool:
         flash(request, "Spool not found.", "error")
         return RedirectResponse("/spools", status_code=303)
@@ -236,14 +252,18 @@ async def update_spool(
     clear_image: str = Form(None),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     verify_csrf(request, csrf_token)
-    spool = db.get(Spool, spool_id)
+    spool = get_owned(db, Spool, spool_id, user.id)
     if not spool:
         flash(request, "Spool not found.", "error")
         return RedirectResponse("/spools", status_code=303)
     if weight <= 0 or qty < 0:
         flash(request, "Weight must be positive and quantity cannot be negative.", "error")
+        return RedirectResponse(f"/spools/{spool_id}/edit", status_code=303)
+    if not _lookups_belong_to(db, user.id, manufacturer_id, material_type_id, color_id):
+        flash(request, "Please choose a manufacturer, material, and color from your lists.", "error")
         return RedirectResponse(f"/spools/{spool_id}/edit", status_code=303)
     if clear_image == "1":
         delete_image(spool.image_path)
@@ -281,9 +301,10 @@ def delete_spool(
     spool_id: int,
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     verify_csrf(request, csrf_token)
-    spool = db.get(Spool, spool_id)
+    spool = get_owned(db, Spool, spool_id, user.id)
     if spool:
         delete_image(spool.image_path)
         db.delete(spool)
@@ -299,9 +320,10 @@ def adjust_qty(
     delta: int = Form(...),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     verify_csrf(request, csrf_token)
-    spool = db.get(Spool, spool_id)
+    spool = get_owned(db, Spool, spool_id, user.id)
     if not spool:
         return templates.TemplateResponse(
             request, "partials/_qty_cell.html", {"spool": None}

@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from ..auth import flash, hash_password, verify_csrf, verify_password
+from ..auth import flash, verify_csrf, verify_password
 from ..database import get_db
 from ..models import User
+from ..services.users import create_user
 from ..templating import templates
 
 router = APIRouter()
@@ -29,22 +30,18 @@ def do_setup(
         return RedirectResponse("/login", status_code=303)
 
     username = username.strip()
-    error = None
-    if not username:
-        error = "Username is required."
-    elif len(password) < 8:
-        error = "Password must be at least 8 characters."
-    elif password != confirm:
-        error = "Passwords do not match."
-    if error:
-        flash(request, error, "error")
+    if password != confirm:
+        flash(request, "Passwords do not match.", "error")
         return templates.TemplateResponse(request, "setup.html", {"form_username": username})
-
-    user = User(username=username, hashed_password=hash_password(password))
-    db.add(user)
+    try:
+        user = create_user(db, username, password, is_admin=True)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return templates.TemplateResponse(request, "setup.html", {"form_username": username})
     db.commit()
     request.session["user_id"] = user.id
     request.session["username"] = user.username
+    request.session["is_admin"] = True
     flash(request, f"Welcome, {user.username}! Your account was created.", "success")
     return RedirectResponse("/spools", status_code=303)
 
@@ -71,6 +68,7 @@ def do_login(
         return templates.TemplateResponse(request, "login.html", {"form_username": username})
     request.session["user_id"] = user.id
     request.session["username"] = user.username
+    request.session["is_admin"] = bool(user.is_admin)
     return RedirectResponse("/spools", status_code=303)
 
 

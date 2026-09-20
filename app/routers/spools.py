@@ -3,9 +3,9 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, or_, select as sa_select
 from sqlalchemy.orm import Session, joinedload
 
-from ..auth import flash, verify_csrf
+from ..auth import current_user, flash, verify_csrf
 from ..database import get_db
-from ..models import Color, Manufacturer, MaterialType, Spool, SpoolInventory
+from ..models import Color, Manufacturer, MaterialType, Spool, SpoolInventory, User
 from ..services.images import ImageError, delete_image, fetch_remote_image, save_spool_image
 from ..templating import templates
 
@@ -78,6 +78,7 @@ def list_spools(
     mat: str = "",
     col: str = "",
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     show_images = request.cookies.get("filaman_show_images", "1") != "0"
     query = (

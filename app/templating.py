@@ -13,6 +13,7 @@ def _global_context(request: Request) -> dict:
         "flashes": pop_flashes(request),
         "ai_enabled": bool(config.AI_API_KEY),
         "username": request.session.get("username"),
+        "is_admin": bool(request.session.get("is_admin")),
     }
 
 

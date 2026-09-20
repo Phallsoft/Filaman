@@ -26,7 +26,8 @@
     <li><a href="/materials">Materials</a></li>
     <li><a href="/colors">Colors</a></li>
     <li><a href="/import">AI Import</a></li>
-    <li><a href="/admin">Admin</a></li>
+    <li><a href="/settings">Settings</a></li>
+    {% if is_admin %}<li><a href="/admin">Admin</a></li>{% endif %}
     {% endif %}
     <li><button id="theme-toggle" class="outline secondary" title="Toggle light/dark theme">&#127769;</button></li>
     {% if username %}

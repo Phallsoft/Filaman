@@ -4,21 +4,58 @@
 <h2>Admin</h2>
 
 <article>
-  <h4>Change Password</h4>
-  <form method="post" action="/admin/password">
+  <h4>Users</h4>
+  <figure class="overflow-auto">
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Role</th><th>Spools</th><th class="actions-col"></th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ "Admin" if u.is_admin else "User" }}</td>
+          <td>{{ spool_counts.get(u.id, 0) }}</td>
+          <td class="actions">
+            <details>
+              <summary role="button" class="outline secondary">Reset password</summary>
+              <form method="post" action="/admin/users/{{ u.id }}/password">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <fieldset role="group">
+                  <input type="password" name="new_password" placeholder="New password" minlength="8" required autocomplete="new-password">
+                  <button type="submit">Set</button>
+                </fieldset>
+              </form>
+            </details>
+            {% if u.id != request.session.user_id %}
+            <details>
+              <summary role="button" class="outline danger-button">Delete</summary>
+              <form method="post" action="/admin/users/{{ u.id }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <p>Deletes <strong>{{ u.username }}</strong> and all their spools and lookups. Type the username to confirm.</p>
+                <fieldset role="group">
+                  <input name="confirm_text" placeholder="{{ u.username }}" autocomplete="off" required>
+                  <button type="submit" class="danger-button">Delete user</button>
+                </fieldset>
+              </form>
+            </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </figure>
+
+  <h5>Add user</h5>
+  <form method="post" action="/admin/users">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Current password
-      <input type="password" name="current_password" required autocomplete="current-password">
-    </label>
-    <div class="grid">
-      <label>New password
-        <input type="password" name="new_password" required minlength="8" autocomplete="new-password">
-      </label>
-      <label>Confirm new password
-        <input type="password" name="confirm_password" required minlength="8" autocomplete="new-password">
-      </label>
-    </div>
-    <button type="submit">Change Password</button>
+    <fieldset role="group">
+      <input name="username" placeholder="Username" required maxlength="64" autocomplete="off">
+      <input type="password" name="password" placeholder="Temporary password" minlength="8" required autocomplete="new-password">
+      <button type="submit">Add user</button>
+    </fieldset>
+    <small>New users are not admins. Tell them to change the password under Settings.</small>
   </form>
 </article>
 

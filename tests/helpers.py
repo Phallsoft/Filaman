@@ -31,3 +31,12 @@ def login(client, username, password):
 def logout(client):
     token = csrf(client, "/spools")
     return client.post("/logout", data={"csrf_token": token})
+
+
+def add_user(admin_client, username, password="password123"):
+    token = csrf(admin_client, "/admin")
+    r = admin_client.post("/admin/users", data={
+        "username": username, "password": password, "csrf_token": token,
+    })
+    assert r.status_code == 303, r.text
+    return r

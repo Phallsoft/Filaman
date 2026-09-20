@@ -15,9 +15,11 @@ class User(Base):
 
 class Manufacturer(Base):
     __tablename__ = "manufacturers"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_manufacturer_user_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
     mfg_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     spools: Mapped[list["Spool"]] = relationship(back_populates="manufacturer")
@@ -25,18 +27,22 @@ class Manufacturer(Base):
 
 class MaterialType(Base):
     __tablename__ = "material_types"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_material_type_user_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
 
     spools: Mapped[list["Spool"]] = relationship(back_populates="material_type")
 
 
 class Color(Base):
     __tablename__ = "colors"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_color_user_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
     color_code: Mapped[str | None] = mapped_column(String(7), nullable=True)  # HTML hex, e.g. #1A2B3C
 
     spools: Mapped[list["Spool"]] = relationship(back_populates="color")

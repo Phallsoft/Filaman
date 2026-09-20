@@ -12,11 +12,11 @@ from ..templating import templates
 router = APIRouter()
 
 
-def _lookup_lists(db: Session) -> dict:
+def _lookup_lists(db: Session, user_id: int) -> dict:
     return {
-        "manufacturers": db.query(Manufacturer).order_by(func.lower(Manufacturer.name)).all(),
-        "materials": db.query(MaterialType).order_by(func.lower(MaterialType.name)).all(),
-        "colors": db.query(Color).order_by(func.lower(Color.name)).all(),
+        "manufacturers": db.query(Manufacturer).filter(Manufacturer.user_id == user_id).order_by(func.lower(Manufacturer.name)).all(),
+        "materials": db.query(MaterialType).filter(MaterialType.user_id == user_id).order_by(func.lower(MaterialType.name)).all(),
+        "colors": db.query(Color).filter(Color.user_id == user_id).order_by(func.lower(Color.name)).all(),
     }
 
 
@@ -142,15 +142,15 @@ def list_spools(
             "spools": spools, "q": q, "total_qty": total_qty,
             "sort": sort, "mfr": mfr, "mat": mat, "col": col,
             "show_images": show_images,
-            **_lookup_lists(db),
+            **_lookup_lists(db, user.id),
         }
     )
 
 
 @router.get("/spools/new")
-def new_spool(request: Request, db: Session = Depends(get_db)):
+def new_spool(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     return templates.TemplateResponse(
-        request, "spool_form.html", {"spool": None, **_lookup_lists(db)}
+        request, "spool_form.html", {"spool": None, **_lookup_lists(db, user.id)}
     )
 
 
@@ -205,13 +205,18 @@ def image_proxy(url: str):
 
 
 @router.get("/spools/{spool_id}/edit")
-def edit_spool(request: Request, spool_id: int, db: Session = Depends(get_db)):
+def edit_spool(
+    request: Request,
+    spool_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     spool = db.get(Spool, spool_id)
     if not spool:
         flash(request, "Spool not found.", "error")
         return RedirectResponse("/spools", status_code=303)
     return templates.TemplateResponse(
-        request, "spool_form.html", {"spool": spool, **_lookup_lists(db)}
+        request, "spool_form.html", {"spool": spool, **_lookup_lists(db, user.id)}
     )
 
 

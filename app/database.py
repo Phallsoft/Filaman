@@ -48,3 +48,8 @@ def reset_db():
 
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+
+
+def get_owned(db, model, item_id: int, user_id: int):
+    """Fetch a user-owned row by id, or None if it doesn't exist or belongs to someone else."""
+    return db.query(model).filter(model.id == item_id, model.user_id == user_id).first()

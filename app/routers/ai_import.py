@@ -4,9 +4,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import config
-from ..auth import flash, verify_csrf
+from ..auth import current_user, flash, verify_csrf
 from ..database import get_db
-from ..models import Color, Manufacturer, MaterialType
+from ..models import Color, Manufacturer, MaterialType, User
 from ..services import ai_import as svc
 from ..services.ai_import import ImportError_
 from ..services.images import ImageError, delete_image, save_spool_image
@@ -17,11 +17,11 @@ from .spools import merge_or_create_spool
 router = APIRouter(prefix="/import")
 
 
-def _suggestions(db: Session) -> dict:
+def _suggestions(db: Session, user_id: int) -> dict:
     return {
-        "manufacturer_names": [m.name for m in db.query(Manufacturer).order_by(func.lower(Manufacturer.name))],
-        "material_names": [m.name for m in db.query(MaterialType).order_by(func.lower(MaterialType.name))],
-        "color_names": [c.name for c in db.query(Color).order_by(func.lower(Color.name))],
+        "manufacturer_names": [m.name for m in db.query(Manufacturer).filter(Manufacturer.user_id == user_id).order_by(func.lower(Manufacturer.name))],
+        "material_names": [m.name for m in db.query(MaterialType).filter(MaterialType.user_id == user_id).order_by(func.lower(MaterialType.name))],
+        "color_names": [c.name for c in db.query(Color).filter(Color.user_id == user_id).order_by(func.lower(Color.name))],
     }
 
 
@@ -37,6 +37,7 @@ def parse_import(
     text: str = Form(None),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     verify_csrf(request, csrf_token)
     url = (url or "").strip()
@@ -72,7 +73,7 @@ def parse_import(
     return templates.TemplateResponse(
         request,
         "import_preview.html",
-        {"fields": fields, "source_url": url, "image_candidates": image_candidates, **_suggestions(db)},
+        {"fields": fields, "source_url": url, "image_candidates": image_candidates, **_suggestions(db, user.id)},
     )
 
 
@@ -92,6 +93,7 @@ async def save_import(
     clear_image: str = Form(None),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     verify_csrf(request, csrf_token)
     if weight <= 0 or qty < 1:
@@ -109,11 +111,11 @@ async def save_import(
             flash(request, str(e), "error")
             return RedirectResponse("/import", status_code=303)
 
-    mfg, mfg_new = find_or_create(db, Manufacturer, manufacturer)
-    mat, mat_new = find_or_create(db, MaterialType, material)
+    mfg, mfg_new = find_or_create(db, Manufacturer, manufacturer, user.id)
+    mat, mat_new = find_or_create(db, MaterialType, material, user.id)
     code = (color_hex or "").strip()
     col, col_new = find_or_create(
-        db, Color, color_name, color_code=code if HEX_RE.match(code) else None
+        db, Color, color_name, user.id, color_code=code if HEX_RE.match(code) else None
     )
     if not (mfg and mat and col):
         flash(request, "Manufacturer, material, and color are required.", "error")

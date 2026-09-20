@@ -40,3 +40,20 @@ def add_user(admin_client, username, password="password123"):
     })
     assert r.status_code == 303, r.text
     return r
+
+
+def add_lookup(client, entity, name, **extra) -> int:
+    """POST a lookup and return its id as rendered on the list page."""
+    token = csrf(client, f"/{entity}")
+    r = client.post(f"/{entity}", data={"name": name, "csrf_token": token, **extra})
+    assert r.status_code == 303, r.text
+    html = client.get(f"/{entity}").text
+    for row in re.finditer(r'name="name" value="([^"]*)" form="edit-(\d+)"', html):
+        if row.group(1) == name:
+            return int(row.group(2))
+    raise AssertionError(f"{name} not found on /{entity}")
+
+
+def lookup_names(client, entity) -> list[str]:
+    html = client.get(f"/{entity}").text
+    return re.findall(r'name="name" value="([^"]*)" form="edit-\d+"', html)

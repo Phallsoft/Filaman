@@ -90,9 +90,10 @@ Every data route takes `user: User = Depends(current_user)`.
 
 - List queries add `.filter(Model.user_id == user.id)`.
 - Point lookups use a new helper `get_owned(db, Model, id, user)` that filters
-  by id **and** `user_id` and raises 404 when nothing matches. A foreign id
-  therefore looks nonexistent rather than forbidden. All `db.get(Model, id)`
-  calls in the routers are replaced.
+  by id **and** `user_id` and returns `None` when nothing matches, and the route
+  handles it exactly as it handles a nonexistent id today (flash + redirect, or
+  empty partial). A foreign id therefore looks nonexistent rather than forbidden.
+  All `db.get(Model, id)` calls in the routers are replaced.
 - Creates pass `user_id=user.id`.
 - `lookups.find_or_create(db, model, name, user, **extra)` and
   `spools.merge_or_create_spool(db, user, ...)` include the user in their
@@ -134,7 +135,7 @@ Contains only the Change Password form (moved from `/admin`).
 
 ## Error handling
 
-- Foreign ids on any data route: 404.
+- Foreign ids on any data route: same response as a nonexistent id.
 - Non-admin on `/admin/*`: 403.
 - Deleted user with a live session: session cleared, redirect to `/login`.
 - Add user with a taken username: flash error, no change.

@@ -1,9 +1,8 @@
 services:
   filaman:
     build: .
-    container_name: filaman
     ports:
-      - "8000:8000"
+      - "${FILAMAN_PORT:-8000}:8000"
     volumes:
       - filaman-data:/data
     environment:

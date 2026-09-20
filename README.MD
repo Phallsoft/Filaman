@@ -39,13 +39,15 @@ Open http://localhost:8000 — you'll be prompted to create your account on firs
 | `BRIGHTDATA_MCP_URL` | _(empty)_ | Optional [Bright Data MCP](https://brightdata.com) endpoint (`https://mcp.brightdata.com/mcp?token=...`). Used as a fallback when a direct page fetch fails or is blocked by bot protection (e.g. Amazon). |
 | `DB_PATH` | `/data/filaman.db` (container) | SQLite database file location |
 | `FILAMAN_PORT` | `8000` | Host port to publish the app on |
+| `FILAMAN_LEGACY_OWNER` | _(empty)_ | Optional, one-time: when upgrading a single-user database, move the existing inventory to a **new** user with this name (same password as the existing account); the existing account keeps the admin role. Leave empty to keep the data on the existing account. |
 | `MEDIA_DIR` | next to `DB_PATH` in `images/` | Local directory for stored spool images |
 
 The database and spool images live in the `filaman-data` Docker volume. The first account created
 at `/setup` is the admin; it adds other users from the Admin page (Settings → change password is
 available to everyone). Backups taken from the Admin page are plain SQLite files (no images) and
 can be restored from the same page. Upgrading an existing single-user database migrates it
-automatically at startup.
+automatically at startup; the existing account keeps its inventory unless `FILAMAN_LEGACY_OWNER`
+names a new user to move it to.
 
 ## Backup, restore, and moving to another host
 

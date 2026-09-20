@@ -65,7 +65,8 @@ def _q(path, sql):
         conn.close()
 
 
-def test_migrates_single_user_db_to_admin_plus_jpaul(tmp_path):
+def test_migrates_single_user_db_to_admin_plus_jpaul(tmp_path, monkeypatch):
+    monkeypatch.setenv("FILAMAN_LEGACY_OWNER", "jpaul")
     db = str(tmp_path / "old.db")
     _make_old_db(db)
 
@@ -101,7 +102,23 @@ def test_migrates_single_user_db_to_admin_plus_jpaul(tmp_path):
         assert constraint in _q(db, f"SELECT sql FROM sqlite_master WHERE name='{table}'")[0][0]
 
 
-def test_migration_is_idempotent(tmp_path):
+def test_single_user_db_without_legacy_owner_keeps_data_on_admin(tmp_path, monkeypatch):
+    monkeypatch.delenv("FILAMAN_LEGACY_OWNER", raising=False)
+    db = str(tmp_path / "old.db")
+    _make_old_db(db)
+
+    assert migrate_multi_user(db) is True
+
+    assert _q(db, "SELECT id, username, hashed_password, is_admin FROM users") == [
+        (1, "admin", "$2b$12$hashhashhash", 1)
+    ]
+    for table in ("manufacturers", "material_types", "colors", "spools"):
+        assert _q(db, f"SELECT DISTINCT user_id FROM {table}") == [(1,)], table
+    assert _q(db, "PRAGMA foreign_key_check") == []
+
+
+def test_migration_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("FILAMAN_LEGACY_OWNER", "jpaul")
     db = str(tmp_path / "old.db")
     _make_old_db(db)
     migrate_multi_user(db)
@@ -109,7 +126,8 @@ def test_migration_is_idempotent(tmp_path):
     assert _q(db, "SELECT count(*) FROM users") == [(2,)]
 
 
-def test_migration_with_two_users_keeps_data_on_first_user(tmp_path):
+def test_migration_with_two_users_keeps_data_on_first_user(tmp_path, monkeypatch):
+    monkeypatch.setenv("FILAMAN_LEGACY_OWNER", "jpaul")
     db = str(tmp_path / "old.db")
     _make_old_db(db)
     conn = sqlite3.connect(db)

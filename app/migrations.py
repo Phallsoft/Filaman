@@ -4,6 +4,7 @@ SQLite cannot add NOT NULL columns with foreign keys or change unique constraint
 in place, so tables are rebuilt: rename old -> create new from the ORM metadata ->
 copy rows -> drop old.
 """
+import os
 import sqlite3
 
 from sqlalchemy.dialects import sqlite as sqlite_dialect
@@ -22,10 +23,12 @@ COPY_COLUMNS = {
     "spools": ["id", "manufacturer_id", "material_type_id", "color_id", "sku", "weight", "image_path"],
 }
 
-# One-off for the original single-user instance: its only account was named
-# "admin" but held the real inventory. The data moves to a new "jpaul" account
-# (same password) and "admin" keeps the admin role. Safe to delete once run.
-LEGACY_DATA_OWNER = "jpaul"
+# Optional one-off for upgrading a single-user instance whose only account
+# (typically "admin") held the real inventory: set FILAMAN_LEGACY_OWNER to a
+# username and the data moves to a NEW account with that name (same password);
+# the existing account keeps the admin role. Unset (the default) leaves the
+# data on the existing account. Read at call time so tests can monkeypatch it.
+LEGACY_OWNER_ENV = "FILAMAN_LEGACY_OWNER"
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -66,20 +69,22 @@ def migrate_multi_user(db_path: str) -> bool:
 
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("PRAGMA legacy_alter_table = ON")  # RENAME must not rewrite FKs in other tables
+        legacy_owner = os.environ.get(LEGACY_OWNER_ENV, "").strip()
         conn.execute("BEGIN")
         try:
             first = conn.execute("SELECT id, hashed_password FROM users ORDER BY id LIMIT 1").fetchone()
             owner_id = first[0] if first else None
             user_count = conn.execute("SELECT count(*) FROM users").fetchone()[0]
-            has_legacy = conn.execute(
-                "SELECT 1 FROM users WHERE username = ?", (LEGACY_DATA_OWNER,)
-            ).fetchone() is not None
-            if user_count == 1 and not has_legacy:
-                cur = conn.execute(
-                    "INSERT INTO users (username, hashed_password, is_admin) VALUES (?, ?, 0)",
-                    (LEGACY_DATA_OWNER, first[1]),
-                )
-                owner_id = cur.lastrowid
+            if legacy_owner and user_count == 1:
+                has_legacy = conn.execute(
+                    "SELECT 1 FROM users WHERE username = ?", (legacy_owner,)
+                ).fetchone() is not None
+                if not has_legacy:
+                    cur = conn.execute(
+                        "INSERT INTO users (username, hashed_password, is_admin) VALUES (?, ?, 0)",
+                        (legacy_owner, first[1]),
+                    )
+                    owner_id = cur.lastrowid
 
             for table in DATA_TABLES:
                 conn.execute(f"ALTER TABLE {table} RENAME TO {table}_old")

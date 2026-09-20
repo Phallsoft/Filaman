@@ -6,3 +6,4 @@ data/
 .venv/
 venv/
 .superpowers/
+.pytest_cache/

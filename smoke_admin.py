@@ -29,11 +29,11 @@ r = c.post(f"{BASE}/login", data={"username": "admin", "password": "testpass123"
 check("login", r.status_code == 303 and r.headers["location"] == "/spools")
 
 # wrong password rejected
-csrf = get_csrf(c, "/admin")
-r = c.post(f"{BASE}/admin/password", data={
+csrf = get_csrf(c, "/settings")
+r = c.post(f"{BASE}/settings/password", data={
     "current_password": "wrong", "new_password": "newpass123",
     "confirm_password": "newpass123", "csrf_token": csrf})
-r2 = c.get(f"{BASE}/admin")
+r2 = c.get(f"{BASE}/settings")
 check("wrong current password rejected", "Current password is incorrect" in r2.text)
 
 # backup

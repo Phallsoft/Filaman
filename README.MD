@@ -8,6 +8,7 @@ tracking, just "I have 3 black PLA spools, 1kg each."
 
 - **Quantity-based inventory** — one record per spool type with a qty (and one-tap ± adjusters)
 - **Spool images** — upload an image, use an image URL, crop/position it, or choose images detected during AI import
+- **Multiple users** — each account has its own spools and lookup lists; an admin creates accounts and handles backups
 - **Quick-create everywhere** — add a manufacturer, material, or color inline without leaving the spool form
 - **AI import** — paste a product page URL or product text; the configured LLM extracts manufacturer,
   material, color (with hex code), SKU, weight, and pack quantity for you to review, edit, and save.
@@ -16,7 +17,7 @@ tracking, just "I have 3 black PLA spools, 1kg each."
 - **Smart merging** — adding a spool identical to an existing one just bumps the quantity
 - **Clean, mobile-friendly UI** with light/dark theme
 - **Form-based auth** with first-run account setup
-- **Admin tools** — change password, one-click database backup/restore, and a (deliberately scary) database reset
+- **Admin tools** — manage user accounts, one-click database backup/restore, and a (deliberately scary) database reset; every user changes their own password under Settings
 
 ## Quickstart
 
@@ -37,10 +38,17 @@ Open http://localhost:8000 — you'll be prompted to create your account on firs
 | `AI_MODEL` | `openai/gpt-4o-mini` | Model name to use for extraction |
 | `BRIGHTDATA_MCP_URL` | _(empty)_ | Optional [Bright Data MCP](https://brightdata.com) endpoint (`https://mcp.brightdata.com/mcp?token=...`). Used as a fallback when a direct page fetch fails or is blocked by bot protection (e.g. Amazon). |
 | `DB_PATH` | `/data/filaman.db` (container) | SQLite database file location |
+| `FILAMAN_PORT` | `8000` | Host port to publish the app on |
+| `FILAMAN_LEGACY_OWNER` | _(empty)_ | Optional, one-time: when upgrading a single-user database, move the existing inventory to a **new** user with this name (same password as the existing account); the existing account keeps the admin role. Leave empty to keep the data on the existing account. |
 | `MEDIA_DIR` | next to `DB_PATH` in `images/` | Local directory for stored spool images |
 
-The database and spool images live in the `filaman-data` Docker volume. Backups taken from the
-Admin page are plain SQLite files (no images) and can be restored from the same page.
+The database and spool images live in the `filaman-data` Docker volume. The first account created
+at `/setup` is the admin; it adds other users from the Admin page (Settings → change password is
+available to everyone). Backups taken from the Admin page are plain SQLite files (no images) and
+can be restored from the same page. Upgrading an existing single-user database migrates it
+automatically at startup; the existing account keeps its inventory unless `FILAMAN_LEGACY_OWNER`
+names a new user to move it to. After upgrading, log out and back in so the Admin link appears
+(sessions from before the upgrade do not carry the admin flag).
 
 ## Backup, restore, and moving to another host
 
@@ -75,6 +83,8 @@ Copy `.env` too: keeping the same `SECRET_KEY` preserves existing logins. `backu
 python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt   # Windows
 .venv/Scripts/python -m uvicorn app.main:app --reload
+pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
 `.env` in the project root is read automatically. Run `python smoke_admin.py` (with the server

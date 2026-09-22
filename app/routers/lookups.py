@@ -5,9 +5,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..auth import flash, verify_csrf
-from ..database import get_db
-from ..models import Color, Manufacturer, MaterialType, Spool
+from ..auth import current_user, flash, verify_csrf
+from ..database import get_db, get_owned
+from ..models import Color, Manufacturer, MaterialType, Spool, User
 from ..templating import templates
 
 HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -34,15 +34,19 @@ LOOKUPS = {
 }
 
 
-def find_or_create(db: Session, model, name: str, **extra):
-    """Case-insensitive find by name, creating the record if missing."""
+def find_or_create(db: Session, model, name: str, user_id: int, **extra):
+    """Case-insensitive find by name within one user's lookups, creating the record if missing."""
     name = (name or "").strip()
     if not name:
         return None, False
-    obj = db.query(model).filter(func.lower(model.name) == name.lower()).first()
+    obj = (
+        db.query(model)
+        .filter(model.user_id == user_id, func.lower(model.name) == name.lower())
+        .first()
+    )
     if obj:
         return obj, False
-    obj = model(name=name, **extra)
+    obj = model(name=name, user_id=user_id, **extra)
     db.add(obj)
     db.flush()
     return obj, True
@@ -63,8 +67,8 @@ def _make_router(entity: str, cfg: dict) -> APIRouter:
     model = cfg["model"]
 
     @r.get("", name=f"{entity}_list")
-    def list_items(request: Request, db: Session = Depends(get_db)):
-        items = db.query(model).order_by(func.lower(model.name)).all()
+    def list_items(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+        items = db.query(model).filter(model.user_id == user.id).order_by(func.lower(model.name)).all()
         return templates.TemplateResponse(
             request, "lookup_list.html", {"entity": entity, "cfg": cfg, "items": items}
         )
@@ -77,9 +81,12 @@ def _make_router(entity: str, cfg: dict) -> APIRouter:
         color_code: str = Form(None),
         csrf_token: str = Form(None),
         db: Session = Depends(get_db),
+        user: User = Depends(current_user),
     ):
         verify_csrf(request, csrf_token)
-        obj, created = find_or_create(db, model, name, **_clean_extra(entity, mfg_url, color_code))
+        obj, created = find_or_create(
+            db, model, name, user.id, **_clean_extra(entity, mfg_url, color_code)
+        )
         if obj is None:
             flash(request, "Name is required.", "error")
         elif created:
@@ -96,12 +103,15 @@ def _make_router(entity: str, cfg: dict) -> APIRouter:
         color_code: str = Form(None, alias=f"qcolor_{entity}"),
         csrf_token: str = Form(None),
         db: Session = Depends(get_db),
+        user: User = Depends(current_user),
     ):
         verify_csrf(request, csrf_token)
-        obj, created = find_or_create(db, model, name, **_clean_extra(entity, None, color_code))
+        obj, created = find_or_create(
+            db, model, name, user.id, **_clean_extra(entity, None, color_code)
+        )
         if created:
             db.commit()
-        items = db.query(model).order_by(func.lower(model.name)).all()
+        items = db.query(model).filter(model.user_id == user.id).order_by(func.lower(model.name)).all()
         return templates.TemplateResponse(
             request,
             "partials/_options.html",
@@ -114,9 +124,10 @@ def _make_router(entity: str, cfg: dict) -> APIRouter:
         item_id: int,
         csrf_token: str = Form(None),
         db: Session = Depends(get_db),
+        user: User = Depends(current_user),
     ):
         verify_csrf(request, csrf_token)
-        obj = db.get(model, item_id)
+        obj = get_owned(db, model, item_id, user.id)
         if obj:
             in_use = db.query(Spool.id).filter(getattr(Spool, cfg["fk"]) == item_id).first()
             if in_use:
@@ -136,9 +147,10 @@ def _make_router(entity: str, cfg: dict) -> APIRouter:
         color_code: str = Form(None),
         csrf_token: str = Form(None),
         db: Session = Depends(get_db),
+        user: User = Depends(current_user),
     ):
         verify_csrf(request, csrf_token)
-        obj = db.get(model, item_id)
+        obj = get_owned(db, model, item_id, user.id)
         if obj:
             new_name = name.strip()
             if not new_name:
@@ -146,7 +158,11 @@ def _make_router(entity: str, cfg: dict) -> APIRouter:
                 return RedirectResponse(f"/{entity}", status_code=303)
             clash = (
                 db.query(model)
-                .filter(func.lower(model.name) == new_name.lower(), model.id != item_id)
+                .filter(
+                    model.user_id == user.id,
+                    func.lower(model.name) == new_name.lower(),
+                    model.id != item_id,
+                )
                 .first()
             )
             if clash:

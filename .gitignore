@@ -5,3 +5,5 @@ data/
 *.db
 .venv/
 venv/
+.superpowers/
+.pytest_cache/

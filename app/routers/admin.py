@@ -4,46 +4,95 @@ import tempfile
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from ..auth import flash, hash_password, verify_csrf, verify_password
-from ..database import get_db, reset_db
-from ..models import User
+from ..auth import flash, hash_password, require_admin, verify_csrf
+from ..database import get_db, init_db, reset_db
+from ..migrations import migrate_file
+from ..models import Spool, User
 from ..services import backup as backup_svc
+from ..services.users import create_user, delete_user, validate_password
 from ..templating import templates
 
-router = APIRouter(prefix="/admin")
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
 RESET_PHRASE = "Yes, Really Reset The Database"
 
 
 @router.get("")
-def admin_page(request: Request):
-    return templates.TemplateResponse(request, "admin.html", {"reset_phrase": RESET_PHRASE})
+def admin_page(request: Request, db: Session = Depends(get_db)):
+    users = db.query(User).order_by(User.id).all()
+    spool_counts = dict(db.query(Spool.user_id, func.count(Spool.id)).group_by(Spool.user_id).all())
+    return templates.TemplateResponse(
+        request, "admin.html",
+        {"reset_phrase": RESET_PHRASE, "users": users, "spool_counts": spool_counts},
+    )
 
 
-@router.post("/password")
-def change_password(
+@router.post("/users")
+def add_user(
     request: Request,
-    current_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
 ):
     verify_csrf(request, csrf_token)
-    user = db.get(User, request.session.get("user_id"))
-    if not user or not verify_password(current_password, user.hashed_password):
-        flash(request, "Current password is incorrect.", "error")
-    elif len(new_password) < 8:
-        flash(request, "New password must be at least 8 characters.", "error")
-    elif new_password != confirm_password:
-        flash(request, "New passwords do not match.", "error")
+    try:
+        user = create_user(db, username, password)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return RedirectResponse("/admin", status_code=303)
+    db.commit()
+    flash(request, f"User '{user.username}' created.", "success")
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/users/{user_id}/password")
+def reset_user_password(
+    request: Request,
+    user_id: int,
+    new_password: str = Form(...),
+    csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    verify_csrf(request, csrf_token)
+    target = db.get(User, user_id)
+    err = validate_password(new_password)
+    if target is None:
+        flash(request, "User not found.", "error")
+    elif err:
+        flash(request, err, "error")
     else:
-        user.hashed_password = hash_password(new_password)
+        target.hashed_password = hash_password(new_password)
         db.commit()
-        flash(request, "Password changed.", "success")
+        flash(request, f"Password reset for '{target.username}'.", "success")
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/users/{user_id}/delete")
+def remove_user(
+    request: Request,
+    user_id: int,
+    confirm_text: str = Form(""),
+    csrf_token: str = Form(None),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    verify_csrf(request, csrf_token)
+    target = db.get(User, user_id)
+    if target is None:
+        flash(request, "User not found.", "error")
+    elif target.id == admin.id:
+        flash(request, "You cannot delete your own account.", "error")
+    elif confirm_text.strip() != target.username:
+        flash(request, f"Delete cancelled — type the username '{target.username}' to confirm.", "error")
+    else:
+        delete_user(db, target)
+        db.commit()
+        flash(request, f"User '{target.username}' and all their data were deleted.", "success")
     return RedirectResponse("/admin", status_code=303)
 
 
@@ -64,6 +113,7 @@ async def restore_backup(
     request: Request,
     file: UploadFile = File(...),
     csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
 ):
     verify_csrf(request, csrf_token)
     fd, tmp_path = tempfile.mkstemp(suffix=".db")
@@ -75,7 +125,16 @@ async def restore_backup(
         if error:
             flash(request, f"Restore failed: {error}", "error")
             return RedirectResponse("/admin", status_code=303)
+        # Upgrade the upload BEFORE it becomes the live DB, so a file the
+        # migration rejects never replaces a working database.
+        try:
+            migrate_file(tmp_path)
+        except Exception as e:
+            flash(request, f"Restore failed: {e}", "error")
+            return RedirectResponse("/admin", status_code=303)
+        db.close()  # release this request's connection so no handle on the live DB survives the swap
         backup_svc.restore_backup(tmp_path)
+        init_db()  # safety net; the upload is already migrated
     finally:
         if os.path.exists(tmp_path):
             try:

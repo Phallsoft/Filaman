@@ -1,7 +1,11 @@
 import secrets
 
 import bcrypt
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from .database import get_db
+from .models import User
 
 
 def hash_password(password: str) -> str:
@@ -37,3 +41,18 @@ def flash(request: Request, message: str, category: str = "info") -> None:
 
 def pop_flashes(request: Request) -> list[dict]:
     return request.session.pop("flashes", [])
+
+
+def current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """The logged-in user. If the account no longer exists, drop the session and bounce to /login."""
+    user = db.get(User, request.session.get("user_id"))
+    if user is None:
+        request.session.clear()
+        raise HTTPException(status_code=303, headers={"Location": "/login"})
+    return user
+
+
+def require_admin(user: User = Depends(current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user

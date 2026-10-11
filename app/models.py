@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -89,3 +91,110 @@ class SpoolInventory(Base):
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     spool: Mapped[Spool] = relationship(back_populates="inventory")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+class LibraryCategory(Base):
+    __tablename__ = "library_categories"
+    # SQLite treats NULL parent_ids as distinct, so top-level sibling uniqueness
+    # is enforced in services.library_taxonomy as well.
+    __table_args__ = (UniqueConstraint("user_id", "parent_id", "name", name="uq_library_category_sibling"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("library_categories.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class LibraryTag(Base):
+    __tablename__ = "library_tags"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_library_tag_user_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+library_model_tags = Table(
+    "library_model_tags",
+    Base.metadata,
+    Column("model_id", ForeignKey("library_models.id"), primary_key=True),
+    Column("tag_id", ForeignKey("library_tags.id"), primary_key=True),
+)
+
+
+class StoredFile(Base):
+    """One blob in FILES_DIR, keyed by content hash and shared by every row that references it."""
+
+    __tablename__ = "stored_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sha256: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class LibraryModel(Base):
+    __tablename__ = "library_models"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    license: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    print_settings: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("library_categories.id"), nullable=True)
+    is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    copied_from_id: Mapped[int | None] = mapped_column(ForeignKey("library_models.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    owner: Mapped[User] = relationship()
+    category: Mapped[LibraryCategory | None] = relationship()
+    copied_from: Mapped["LibraryModel | None"] = relationship(remote_side=[id])
+    tags: Mapped[list[LibraryTag]] = relationship(
+        secondary=library_model_tags, order_by=lambda: func.lower(LibraryTag.name)
+    )
+    files: Mapped[list["LibraryModelFile"]] = relationship(
+        back_populates="model", cascade="all, delete-orphan",
+        order_by=lambda: (LibraryModelFile.position, LibraryModelFile.id),
+    )
+    images: Mapped[list["LibraryModelImage"]] = relationship(
+        back_populates="model", cascade="all, delete-orphan",
+        order_by=lambda: (LibraryModelImage.position, LibraryModelImage.id),
+    )
+
+    @property
+    def cover(self) -> "LibraryModelImage | None":
+        return self.images[0] if self.images else None
+
+
+class LibraryModelFile(Base):
+    __tablename__ = "library_model_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_id: Mapped[int] = mapped_column(ForeignKey("library_models.id"), nullable=False)
+    stored_file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    model: Mapped[LibraryModel] = relationship(back_populates="files")
+    stored: Mapped[StoredFile] = relationship()
+
+
+class LibraryModelImage(Base):
+    __tablename__ = "library_model_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    model_id: Mapped[int] = mapped_column(ForeignKey("library_models.id"), nullable=False)
+    stored_file_id: Mapped[int] = mapped_column(ForeignKey("stored_files.id"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    model: Mapped[LibraryModel] = relationship(back_populates="images")
+    stored: Mapped[StoredFile] = relationship()

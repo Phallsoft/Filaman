@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Filaman{% endblock %}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-  <link rel="stylesheet" href="/static/custom.css?v=2">
+  <link rel="stylesheet" href="/static/custom.css?v=3">
   <script>
     (function () {
       var t = localStorage.getItem("theme");
@@ -22,6 +22,7 @@
   <ul class="nav-links">
     {% if username %}
     <li><a href="/spools">Spools</a></li>
+    <li><a href="/models">Models</a></li>
     <li><a href="/manufacturers">Manufacturers</a></li>
     <li><a href="/materials">Materials</a></li>
     <li><a href="/colors">Colors</a></li>

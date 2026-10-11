@@ -134,3 +134,22 @@ def _write_normalized_image(raw: bytes, force_square: bool = False) -> str:
     canvas.save(tmp_path, format="JPEG", quality=88, optimize=True)
     os.replace(tmp_path, path)
     return rel_path
+
+def normalize_photo(raw: bytes, max_side: int = 1600) -> bytes:
+    """EXIF-rotate, shrink to max_side, and re-encode as JPEG (model library images keep their aspect ratio)."""
+    try:
+        with Image.open(BytesIO(raw)) as img:
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGBA")
+                canvas = Image.new("RGB", img.size, "white")
+                canvas.paste(img, mask=img.getchannel("A"))
+                img = canvas
+            else:
+                img = img.convert("RGB")
+            out = BytesIO()
+            img.save(out, format="JPEG", quality=88, optimize=True)
+            return out.getvalue()
+    except (UnidentifiedImageError, OSError):
+        raise ImageError("That file could not be read as an image.")

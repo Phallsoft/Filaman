@@ -21,3 +21,15 @@ templates = Jinja2Templates(
     directory=str(Path(__file__).parent / "templates"),
     context_processors=[_global_context],
 )
+
+
+def _filesize(size: int) -> str:
+    if size < 1024:
+        return f"{size} bytes"
+    for unit in ("KB", "MB", "GB"):
+        size /= 1024
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}"
+
+
+templates.env.filters["filesize"] = _filesize

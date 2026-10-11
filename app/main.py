@@ -9,7 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import MEDIA_DIR, SECRET_KEY
 from .database import SessionLocal, init_db
 from .models import User
-from .routers import admin, ai_import, auth_routes, lookups, settings, spools
+from .routers import admin, ai_import, auth_routes, library, lookups, settings, spools
 
 
 @asynccontextmanager
@@ -55,6 +55,7 @@ app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 app.include_router(auth_routes.router)
 app.include_router(spools.router)
+app.include_router(library.router)
 app.include_router(lookups.router)
 app.include_router(ai_import.router)
 app.include_router(admin.router)

@@ -1,7 +1,8 @@
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from starlette.datastructures import UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
@@ -201,8 +202,6 @@ async def create_model(
     category_id: str = Form(""),
     new_category: str = Form(""),
     tags: str = Form(""),
-    files: list[UploadFile] = File(default=[]),
-    images: list[UploadFile] = File(default=[]),
     image_url: str = Form(""),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
@@ -224,13 +223,19 @@ async def create_model(
     db.add(model)
     db.flush()
     lib.set_tags(db, model, parse_tag_names(tags))
-    upload_errors = await lib.attach_uploads(db, model, files, images, image_url)
+    form = await request.form()
+    upload_errors = await lib.attach_uploads(db, model, _uploads(form, "files"), _uploads(form, "images"), image_url)
     reindex(db, [model.id])
     db.commit()
     for msg in upload_errors:
         flash(request, msg, "error")
     flash(request, f"Added “{model.title}”.", "success")
     return RedirectResponse(f"/models/{model.id}", status_code=303)
+
+
+def _uploads(form, name: str) -> list[UploadFile]:
+    """Real uploads only: browsers send an empty part (parsed as "") for an untouched file input."""
+    return [f for f in form.getlist(name) if isinstance(f, UploadFile) and f.filename]
 
 
 def _owned_or_404(db: Session, model_id: int, user: User) -> LibraryModel:
@@ -288,8 +293,6 @@ async def update_model(
     category_id: str = Form(""),
     new_category: str = Form(""),
     tags: str = Form(""),
-    files: list[UploadFile] = File(default=[]),
-    images: list[UploadFile] = File(default=[]),
     image_url: str = Form(""),
     csrf_token: str = Form(None),
     db: Session = Depends(get_db),
@@ -310,7 +313,8 @@ async def update_model(
         )
     model.category_id = cat_id
     lib.set_tags(db, model, parse_tag_names(tags))
-    upload_errors = await lib.attach_uploads(db, model, files, images, image_url)
+    form = await request.form()
+    upload_errors = await lib.attach_uploads(db, model, _uploads(form, "files"), _uploads(form, "images"), image_url)
     reindex(db, [model.id])
     db.commit()
     for msg in upload_errors:

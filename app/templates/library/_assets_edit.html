@@ -1,0 +1,46 @@
+{% if model.files %}
+<h4>Files</h4>
+<ul class="asset-list">
+  {% for f in model.files %}
+  <li>
+    <input name="filename" value="{{ f.filename }}" form="file-rename-{{ f.id }}" aria-label="File name" maxlength="255">
+    <small class="muted">{{ f.stored.size|filesize }}</small>
+    <button type="submit" form="file-rename-{{ f.id }}" class="outline">Rename</button>
+    <button type="submit" form="file-del-{{ f.id }}" class="outline danger-text">Remove</button>
+  </li>
+  {% endfor %}
+</ul>
+{% for f in model.files %}
+<form id="file-rename-{{ f.id }}" method="post" action="/models/{{ model.id }}/files/{{ f.id }}/rename" class="hidden-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+<form id="file-del-{{ f.id }}" method="post" action="/models/{{ model.id }}/files/{{ f.id }}/delete" class="hidden-form"
+      onsubmit="return confirm('Remove this file?')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+{% endfor %}
+{% endif %}
+
+{% if model.images %}
+<h4>Images</h4>
+<div class="image-admin">
+  {% for img in model.images %}
+  <figure>
+    <img src="/models/images/{{ img.id }}" alt="Image {{ loop.index }}" loading="lazy">
+    <figcaption>
+      {% if loop.first %}<span class="badge">Cover</span>{% else %}
+      <form method="post" action="/models/{{ model.id }}/images/{{ img.id }}/cover" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="outline">Make cover</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/models/{{ model.id }}/images/{{ img.id }}/delete" class="inline-form"
+            onsubmit="return confirm('Remove this image?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="outline danger-text">Remove</button>
+      </form>
+    </figcaption>
+  </figure>
+  {% endfor %}
+</div>
+{% endif %}

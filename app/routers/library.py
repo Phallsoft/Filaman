@@ -2,6 +2,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
@@ -10,7 +11,7 @@ from ..auth import current_user, flash, verify_csrf
 from ..database import get_db, get_owned
 from ..models import LibraryModel, LibraryTag, User, library_model_tags
 from ..services import library as lib
-from ..services.library_search import reindex, search_ids
+from ..services.library_search import PUBLIC_COLUMNS, reindex, search_ids
 from ..services.library_taxonomy import (
     category_path,
     descendant_ids,
@@ -211,26 +212,46 @@ async def create_model(
     verify_csrf(request, csrf_token)
     values = _submitted_values(title, source_url, platform, author, license, description, print_settings,
                                category_id, new_category, tags)
-    model = LibraryModel(user_id=user.id)
-    error = lib.apply_fields(model, title=title, source_url=source_url, platform=platform, author=author,
-                             license=license, description=description, print_settings=print_settings)
-    cat_id, cat_error = (None, None) if error else lib.resolve_category(db, user.id, category_id, new_category)
+    form = await request.form()
+    return await run_in_threadpool(
+        _save_model, request, db, user, None, values, _uploads(form, "files"), _uploads(form, "images"), image_url
+    )
+
+
+def _save_model(request: Request, db: Session, user: User, model: LibraryModel | None, values: dict,
+                files: list, images: list, image_url: str):
+    """Create (model=None) or update a model. Runs in a worker thread.
+
+    Order matters: validate in memory, stage uploads (slow: copying, fetching, image work)
+    while holding no database lock, then do every write in one short transaction.
+    """
+    creating = model is None
+    if creating:
+        model = LibraryModel(user_id=user.id)
+    error = lib.apply_fields(model, **{f: values[f] for f in FORM_FIELDS})
+    staged = lib.StagedUploads() if error else lib.stage_uploads(files, images, image_url)
+    cat_id, cat_error = (None, None) if error else lib.resolve_category(db, user.id, values["category_id"],
+                                                                        values["new_category"])
     if error or cat_error:
+        staged.discard()
         db.rollback()
+        if not creating:
+            db.refresh(model)
         return templates.TemplateResponse(
-            request, "library/form.html", _form_context(db, user, None, values, error or cat_error), status_code=400
+            request, "library/form.html",
+            _form_context(db, user, None if creating else model, values, error or cat_error), status_code=400,
         )
     model.category_id = cat_id
-    db.add(model)
-    db.flush()
-    lib.set_tags(db, model, parse_tag_names(tags))
-    form = await request.form()
-    upload_errors = await lib.attach_uploads(db, model, _uploads(form, "files"), _uploads(form, "images"), image_url)
+    if creating:
+        db.add(model)
+        db.flush()
+    lib.set_tags(db, model, parse_tag_names(values["tags"]))
+    lib.attach_staged(db, model, staged)
     reindex(db, [model.id])
     db.commit()
-    for msg in upload_errors:
+    for msg in staged.errors:
         flash(request, msg, "error")
-    flash(request, f"Added “{model.title}”.", "success")
+    flash(request, f"Added “{model.title}”." if creating else "Model saved.", "success")
     return RedirectResponse(f"/models/{model.id}", status_code=303)
 
 
@@ -303,25 +324,10 @@ async def update_model(
     model = _owned_or_404(db, model_id, user)
     values = _submitted_values(title, source_url, platform, author, license, description, print_settings,
                                category_id, new_category, tags)
-    error = lib.apply_fields(model, title=title, source_url=source_url, platform=platform, author=author,
-                             license=license, description=description, print_settings=print_settings)
-    cat_id, cat_error = (None, None) if error else lib.resolve_category(db, user.id, category_id, new_category)
-    if error or cat_error:
-        db.rollback()
-        db.refresh(model)
-        return templates.TemplateResponse(
-            request, "library/form.html", _form_context(db, user, model, values, error or cat_error), status_code=400
-        )
-    model.category_id = cat_id
-    lib.set_tags(db, model, parse_tag_names(tags))
     form = await request.form()
-    upload_errors = await lib.attach_uploads(db, model, _uploads(form, "files"), _uploads(form, "images"), image_url)
-    reindex(db, [model.id])
-    db.commit()
-    for msg in upload_errors:
-        flash(request, msg, "error")
-    flash(request, "Model saved.", "success")
-    return RedirectResponse(f"/models/{model.id}", status_code=303)
+    return await run_in_threadpool(
+        _save_model, request, db, user, model, values, _uploads(form, "files"), _uploads(form, "images"), image_url
+    )
 
 
 @router.post("/{model_id:int}/delete")
@@ -380,7 +386,7 @@ def shared_library(
     if owner_id:
         query = query.filter(LibraryModel.user_id == owner_id)
     q = q.strip()
-    ids = search_ids(db, q)
+    ids = search_ids(db, q, PUBLIC_COLUMNS)
     if ids is not None:
         query = query.filter(LibraryModel.id.in_(ids))
     total = query.count()

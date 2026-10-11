@@ -31,7 +31,10 @@ def download_file(file_id: int, db: Session = Depends(get_db), user: User = Depe
 @router.get("/images/{image_id:int}")
 def show_image(image_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     asset, path = _viewable_asset(db, LibraryModelImage, image_id, user)
-    return FileResponse(path, media_type=asset.stored.content_type, headers={"Cache-Control": "private, max-age=86400"})
+    # Library images are always normalized to JPEG; never trust the stored type of a shared blob.
+    return FileResponse(path, media_type="image/jpeg", headers={
+        "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+    })
 
 
 def _owned_asset(db: Session, cls, model_id: int, asset_id: int, user: User):

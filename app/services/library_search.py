@@ -72,17 +72,23 @@ def reindex(db: Session, model_ids: Iterable[int]) -> None:
         )
 
 
-def fts_query(q: str | None) -> str | None:
-    """Turn free text into a safe FTS5 query: every word quoted, prefix-matched, AND-ed."""
+# What other users can see of a shared model: never the owner's tags or category path.
+PUBLIC_COLUMNS = ("title", "author", "platform", "description", "print_settings")
+
+
+def fts_query(q: str | None, columns: tuple[str, ...] | None = None) -> str | None:
+    """Turn free text into a safe FTS5 query: every word quoted, prefix-matched, AND-ed,
+    optionally restricted to some columns."""
     words = re.findall(r"\w+", q or "")
     if not words:
         return None
-    return " AND ".join(f'"{w}"*' for w in words)
+    match = " AND ".join(f'"{w}"*' for w in words)
+    return f"{{{' '.join(columns)}}} : ({match})" if columns else match
 
 
-def search_ids(db: Session, q: str | None) -> set[int] | None:
+def search_ids(db: Session, q: str | None, columns: tuple[str, ...] | None = None) -> set[int] | None:
     """Model ids matching q, or None when q has no searchable words (no filter)."""
-    match = fts_query(q)
+    match = fts_query(q, columns)
     if match is None:
         return None
     rows = db.execute(text(f"SELECT model_id FROM {TABLE} WHERE {TABLE} MATCH :q"), {"q": match})

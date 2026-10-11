@@ -1,5 +1,6 @@
 """Model library rules: validation, uploads, copying, deletion."""
 import re
+from dataclasses import dataclass, field
 
 from fastapi import UploadFile
 from sqlalchemy import func
@@ -93,34 +94,42 @@ def _next_position(items) -> int:
     return max((i.position for i in items), default=-1) + 1
 
 
-async def attach_uploads(
-    db: Session,
-    model: LibraryModel,
-    files: list[UploadFile] | None,
-    images: list[UploadFile] | None,
-    image_url: str | None = None,
-) -> list[str]:
-    """Store uploaded model files and images on the model. Returns user-facing errors for the ones skipped."""
-    errors: list[str] = []
+@dataclass
+class StagedUploads:
+    """Uploads copied into the file store's tmp area, ready to attach; nothing in the database yet."""
+
+    files: list[tuple[str, file_store.Staged]] = field(default_factory=list)
+    images: list[file_store.Staged] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+    def discard(self) -> None:
+        file_store.discard([s for _, s in self.files] + self.images)
+
+
+def stage_uploads(files: list[UploadFile] | None, images: list[UploadFile] | None, image_url: str | None = None) -> StagedUploads:
+    """Copy, hash, fetch and normalize uploads with no database access (slow work happens here).
+
+    Synchronous: call it from a worker thread. Skipped items become user-facing errors.
+    """
+    staged = StagedUploads()
     max_mb = config.MODEL_MAX_FILE_MB
     for upload in files or []:
         if not upload or not upload.filename:
             continue
         name = safe_filename(upload.filename)
+        content_type = file_store.guess_type(upload.filename, upload.content_type)
         try:
-            stored = await file_store.store_upload(db, upload, max_mb * 1024 * 1024)
+            staged.files.append((name, file_store.stage_file(upload.file, name, content_type, max_mb * 1024 * 1024)))
         except file_store.FileTooLarge:
-            errors.append(f"{name} is larger than {max_mb} MB and was not saved.")
-            continue
-        model.files.append(LibraryModelFile(stored_file_id=stored.id, filename=name, position=_next_position(model.files)))
+            staged.errors.append(f"{name} is larger than {max_mb} MB and was not saved.")
 
     raw_images: list[tuple[str, bytes]] = []
     for upload in images or []:
         if not upload or not upload.filename:
             continue
-        raw = await upload.read(MAX_IMAGE_BYTES + 1)
+        raw = upload.file.read(MAX_IMAGE_BYTES + 1)
         if len(raw) > MAX_IMAGE_BYTES:
-            errors.append(f"{safe_filename(upload.filename)} is over 8 MB and was not saved.")
+            staged.errors.append(f"{safe_filename(upload.filename)} is over 8 MB and was not saved.")
             continue
         raw_images.append((safe_filename(upload.filename), raw))
     url = _clean(image_url)
@@ -129,17 +138,24 @@ async def attach_uploads(
             raw, _ = fetch_remote_image(url)
             raw_images.append((url, raw))
         except ImageError as e:
-            errors.append(f"Image URL: {e}")
+            staged.errors.append(f"Image URL: {e}")
     for label, raw in raw_images:
         try:
-            data = normalize_photo(raw)
+            staged.images.append(file_store.stage_bytes(normalize_photo(raw), "image/jpeg"))
         except ImageError as e:
-            errors.append(f"{label}: {e}")
-            continue
-        stored = file_store.store_bytes(db, data, "image/jpeg")
+            staged.errors.append(f"{label}: {e}")
+    return staged
+
+
+def attach_staged(db: Session, model: LibraryModel, staged: StagedUploads) -> None:
+    """File staged uploads and attach them to the model (fast; runs inside the request's transaction)."""
+    for name, s in staged.files:
+        stored = file_store.commit(db, s)
+        model.files.append(LibraryModelFile(stored_file_id=stored.id, filename=name, position=_next_position(model.files)))
+    for s in staged.images:
+        stored = file_store.commit(db, s)
         model.images.append(LibraryModelImage(stored_file_id=stored.id, position=_next_position(model.images)))
     db.flush()
-    return errors
 
 
 def delete_model(db: Session, model: LibraryModel) -> None:

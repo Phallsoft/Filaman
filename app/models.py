@@ -130,6 +130,9 @@ class StoredFile(Base):
     """One blob in FILES_DIR, keyed by content hash and shared by every row that references it."""
 
     __tablename__ = "stored_files"
+    # AUTOINCREMENT: ids are never reused, so a stale reference or a cached /models/images/<id>
+    # can never alias newer content.
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sha256: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -139,6 +142,7 @@ class StoredFile(Base):
 
 class LibraryModel(Base):
     __tablename__ = "library_models"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -177,6 +181,7 @@ class LibraryModel(Base):
 
 class LibraryModelFile(Base):
     __tablename__ = "library_model_files"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_id: Mapped[int] = mapped_column(ForeignKey("library_models.id"), nullable=False)
@@ -190,6 +195,7 @@ class LibraryModelFile(Base):
 
 class LibraryModelImage(Base):
     __tablename__ = "library_model_images"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model_id: Mapped[int] = mapped_column(ForeignKey("library_models.id"), nullable=False)

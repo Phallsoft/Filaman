@@ -151,5 +151,7 @@ def normalize_photo(raw: bytes, max_side: int = 1600) -> bytes:
             out = BytesIO()
             img.save(out, format="JPEG", quality=88, optimize=True)
             return out.getvalue()
+    except Image.DecompressionBombError:
+        raise ImageError("That image is too large (too many pixels); please use a smaller version.")
     except (UnidentifiedImageError, OSError):
         raise ImageError("That file could not be read as an image.")

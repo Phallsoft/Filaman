@@ -77,15 +77,20 @@ def _clean_name(name: str | None, limit: int, what: str) -> str:
     return name
 
 
-def _check_sibling_free(db: Session, user_id: int, parent_id: int | None, name: str, exclude_id: int | None = None):
+def _sibling_taken(db: Session, user_id: int, parent_id: int | None, name: str, exclude_ids=()) -> bool:
     q = db.query(LibraryCategory.id).filter(
         LibraryCategory.user_id == user_id,
         LibraryCategory.parent_id.is_(None) if parent_id is None else LibraryCategory.parent_id == parent_id,
         func.lower(LibraryCategory.name) == name.lower(),
     )
-    if exclude_id is not None:
-        q = q.filter(LibraryCategory.id != exclude_id)
-    if q.first():
+    exclude_ids = [i for i in exclude_ids if i is not None]
+    if exclude_ids:
+        q = q.filter(LibraryCategory.id.notin_(exclude_ids))
+    return q.first() is not None
+
+
+def _check_sibling_free(db: Session, user_id: int, parent_id: int | None, name: str, exclude_id: int | None = None):
+    if _sibling_taken(db, user_id, parent_id, name, (exclude_id,)):
         raise TaxonomyError(f"A category named '{name}' already exists there.")
 
 
@@ -134,12 +139,16 @@ def delete_category(db: Session, cat: LibraryCategory) -> None:
         {LibraryModel.category_id: None}, synchronize_session=False
     )
     for child in db.query(LibraryCategory).filter(LibraryCategory.parent_id == cat.id).all():
-        child.parent_id = cat.parent_id
         # A child whose name collides with a new sibling gets a suffix rather than blocking the delete.
-        try:
-            _check_sibling_free(db, cat.user_id, cat.parent_id, child.name, exclude_id=child.id)
-        except TaxonomyError:
-            child.name = f"{child.name} ({cat.name})"[:MAX_CATEGORY_NAME]
+        # The deleted category itself is not a sibling-to-be, so it never counts as a collision.
+        base, name, n = child.name, child.name, 1
+        while _sibling_taken(db, cat.user_id, cat.parent_id, name, (child.id, cat.id)):
+            n += 1
+            suffix = f" ({cat.name})" if n == 2 else f" ({cat.name} {n - 1})"
+            name = base[: MAX_CATEGORY_NAME - len(suffix)] + suffix
+        child.name = name
+        child.parent_id = cat.parent_id
+        db.flush()  # later siblings must see this one's new place
     db.delete(cat)
     db.flush()
 

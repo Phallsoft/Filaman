@@ -14,6 +14,7 @@ from ..services.library_search import reindex, search_ids
 from ..services.library_taxonomy import (
     category_path,
     descendant_ids,
+    get_or_create_tags,
     parse_tag_names,
     tree_rows,
     user_categories,
@@ -436,3 +437,78 @@ def copy_shared_model(
     db.commit()
     flash(request, f"Added “{copy.title}” to your library.", "success")
     return RedirectResponse(f"/models/{copy.id}", status_code=303)
+
+
+def _safe_next(target: str | None) -> str:
+    target = target or ""
+    if target == "/models" or target.startswith(("/models?", "/models/")):
+        return target
+    return "/models"
+
+
+@router.post("/bulk")
+def bulk_action(
+    request: Request,
+    action: str = Form(""),
+    ids: list[int] = Form(default=[]),
+    category_id: str = Form(""),
+    tag: str = Form(""),
+    next: str = Form("/models"),
+    csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    verify_csrf(request, csrf_token)
+    back = RedirectResponse(_safe_next(next), status_code=303)
+    models = db.query(LibraryModel).filter(LibraryModel.user_id == user.id, LibraryModel.id.in_(ids)).all() if ids else []
+    if not models:
+        flash(request, "Select at least one model first.", "error")
+        return back
+    n = len(models)
+    noun = f"{n} model{'' if n == 1 else 's'}"
+    touched = [m.id for m in models]
+
+    if action == "move":
+        cat_id, _ = lib.resolve_category(db, user.id, category_id, None)
+        for m in models:
+            m.category_id = cat_id
+        message = f"Moved {noun}."
+    elif action in ("add_tag", "remove_tag"):
+        names = parse_tag_names(tag)
+        if not names:
+            flash(request, "Enter a tag name.", "error")
+            return back
+        if action == "add_tag":
+            the_tag = get_or_create_tags(db, user.id, names[:1])[0]
+        else:
+            the_tag = (
+                db.query(LibraryTag)
+                .filter(LibraryTag.user_id == user.id, func.lower(LibraryTag.name) == names[0].lower())
+                .first()
+            )
+        if the_tag is None:
+            flash(request, f"No tag named “{names[0]}”.", "error")
+            return back
+        for m in models:
+            if action == "add_tag" and the_tag not in m.tags:
+                m.tags.append(the_tag)
+            elif action == "remove_tag" and the_tag in m.tags:
+                m.tags.remove(the_tag)
+        message = f"{'Tagged' if action == 'add_tag' else 'Untagged'} {noun} “{the_tag.name}”."
+    elif action in ("share", "unshare"):
+        for m in models:
+            m.is_shared = action == "share"
+        message = f"{'Shared' if action == 'share' else 'Unshared'} {noun}."
+    elif action == "delete":
+        for m in models:
+            lib.delete_model(db, m)
+        touched = []
+        message = f"Deleted {noun}."
+    else:
+        flash(request, "Unknown action.", "error")
+        return back
+
+    reindex(db, touched)
+    db.commit()
+    flash(request, message, "success")
+    return back

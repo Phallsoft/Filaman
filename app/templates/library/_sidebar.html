@@ -1,0 +1,13 @@
+<details class="lib-sidebar" open>
+  <summary>Categories</summary>
+  <ul class="cat-tree">
+    <li><a href="/models" class="{{ 'active' if not cat }}">All <small>{{ all_count }}</small></a></li>
+    <li><a href="/models?cat=none" class="{{ 'active' if cat == 'none' }}">Uncategorized <small>{{ uncategorized_count }}</small></a></li>
+    {% for row in category_rows %}
+    <li style="--depth: {{ row.depth }}">
+      <a href="/models?cat={{ row.category.id }}" class="{{ 'active' if selected_cat and selected_cat.id == row.category.id }}">{{ row.category.name }} <small>{{ row.count }}</small></a>
+    </li>
+    {% endfor %}
+  </ul>
+  <a href="/models/categories" class="cat-manage">Manage categories</a>
+</details>

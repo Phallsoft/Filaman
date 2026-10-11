@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Model Tags — Filaman{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Model tags</h2>
+  <div class="page-actions"><a href="/models" role="button" class="outline">Back to models</a></div>
+</div>
+<p class="muted">Tags are created when you type them on a model. Renaming a tag to an existing tag's name merges the two.</p>
+
+{% if rows %}
+<figure class="overflow-auto">
+  <table>
+    <thead><tr><th>Name</th><th>Models</th><th class="actions-col"></th></tr></thead>
+    <tbody>
+      {% for t, count in rows %}
+      <tr>
+        <td><input name="name" value="{{ t.name }}" form="tag-{{ t.id }}" required maxlength="64" aria-label="Tag name"></td>
+        <td><a href="/models?tag={{ t.id }}">{{ count }}</a></td>
+        <td class="row-actions">
+          <button type="submit" form="tag-{{ t.id }}" class="outline">Save</button>
+          <button type="submit" form="tag-del-{{ t.id }}" class="outline danger-text">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</figure>
+{% for t, _ in rows %}
+<form id="tag-{{ t.id }}" method="post" action="/models/tags/{{ t.id }}" class="hidden-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+<form id="tag-del-{{ t.id }}" method="post" action="/models/tags/{{ t.id }}/delete" class="hidden-form"
+      onsubmit="return confirm('Delete this tag? It is removed from every model that has it.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+{% endfor %}
+{% else %}
+<p>No tags yet.</p>
+{% endif %}
+{% endblock %}

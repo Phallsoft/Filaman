@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Model Categories — Filaman{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Model categories</h2>
+  <div class="page-actions"><a href="/models" role="button" class="outline">Back to models</a></div>
+</div>
+
+<article>
+  <h4>Add category</h4>
+  <form method="post" action="/models/categories">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset role="group">
+      <input name="name" placeholder="Name" required maxlength="128">
+      <select name="parent_id" aria-label="Parent category">
+        <option value="">Top level</option>
+        {% for row in rows %}
+        <option value="{{ row.category.id }}">{{ "— " * row.depth }}{{ row.category.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Add</button>
+    </fieldset>
+  </form>
+</article>
+
+{% if rows %}
+<figure class="overflow-auto">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Parent</th><th>Models</th><th class="actions-col"></th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set c = row.category %}
+      <tr>
+        <td style="padding-left: calc({{ row.depth }} * 1.25rem + 0.5rem)">
+          <input name="name" value="{{ c.name }}" form="cat-{{ c.id }}" required maxlength="128" aria-label="Name">
+        </td>
+        <td>
+          <select name="parent_id" form="cat-{{ c.id }}" aria-label="Parent of {{ c.name }}">
+            <option value="">Top level</option>
+            {% for other in rows if other.category.id not in blocked[c.id] %}
+            <option value="{{ other.category.id }}" {% if other.category.id == c.parent_id %}selected{% endif %}>{{ "— " * other.depth }}{{ other.category.name }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td><a href="/models?cat={{ c.id }}">{{ row.count }}</a></td>
+        <td class="row-actions">
+          <button type="submit" form="cat-{{ c.id }}" class="outline">Save</button>
+          <button type="submit" form="cat-del-{{ c.id }}" class="outline danger-text">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</figure>
+{% for row in rows %}
+<form id="cat-{{ row.category.id }}" method="post" action="/models/categories/{{ row.category.id }}" class="hidden-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+<form id="cat-del-{{ row.category.id }}" method="post" action="/models/categories/{{ row.category.id }}/delete" class="hidden-form"
+      onsubmit="return confirm('Delete this category? Its models become Uncategorized and its subcategories move up a level.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+{% endfor %}
+{% else %}
+<p>No categories yet. Add one above, or create one from the model form.</p>
+{% endif %}
+{% endblock %}

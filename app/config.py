@@ -31,6 +31,14 @@ MEDIA_DIR = os.environ.get(
     str(Path(DB_PATH).expanduser().resolve().parent / "images"),
 )
 
+# Content-addressed store for model library files and images. Deliberately not
+# web-mounted: everything in it is served through access-checked routes.
+FILES_DIR = os.environ.get(
+    "FILES_DIR",
+    str(Path(DB_PATH).expanduser().resolve().parent / "files"),
+)
+MODEL_MAX_FILE_MB = int(os.environ.get("MODEL_MAX_FILE_MB", "250"))
+
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 AI_API_KEY = os.environ.get("AI_API_KEY", "")
 AI_MODEL = os.environ.get("AI_MODEL", "openai/gpt-4o-mini")

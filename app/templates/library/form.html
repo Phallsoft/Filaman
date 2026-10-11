@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if model else "Add" }} Model — Filaman{% endblock %}
+{% block content %}
+<article class="narrow wide-narrow">
+  <h2>{{ "Edit Model" if model else "Add Model" }}</h2>
+  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ '/models/' ~ model.id if model else '/models' }}" enctype="multipart/form-data" id="model-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label>Title
+      <input name="title" value="{{ values.title }}" maxlength="255" placeholder="Leave blank to use the URL" autofocus>
+    </label>
+    <label>URL <small>(optional)</small>
+      <input type="url" name="source_url" value="{{ values.source_url }}" placeholder="https://www.printables.com/model/&hellip;">
+    </label>
+
+    <div class="grid">
+      <label>Platform <small>(auto)</small>
+        <input name="platform" value="{{ values.platform }}" maxlength="64" placeholder="From the URL">
+      </label>
+      <label>Author
+        <input name="author" value="{{ values.author }}" maxlength="255">
+      </label>
+      <label>License
+        <input name="license" value="{{ values.license }}" maxlength="128" placeholder="e.g. CC BY-NC 4.0">
+      </label>
+    </div>
+
+    <div class="grid">
+      <label>Category
+        <select name="category_id">
+          <option value="">Uncategorized</option>
+          {% for row in category_rows %}
+          <option value="{{ row.category.id }}" {% if values.category_id == row.category.id|string %}selected{% endif %}>{{ "— " * row.depth }}{{ row.category.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>New category <small>(optional, created inside the selected one)</small>
+        <input name="new_category" value="{{ values.new_category }}" maxlength="128">
+      </label>
+    </div>
+
+    <label>Tags <small>(comma-separated)</small>
+      <input name="tags" value="{{ values.tags }}" data-tags-input placeholder="gift, printed, needs-supports">
+    </label>
+    {% if all_tags %}
+    <div class="tag-list tag-suggest">
+      {% for t in all_tags %}<button type="button" class="tag" data-tag-suggest="{{ t.name }}">{{ t.name }}</button>{% endfor %}
+    </div>
+    {% endif %}
+
+    <label>Description / notes
+      <textarea name="description" rows="5">{{ values.description }}</textarea>
+    </label>
+    <label>Print settings
+      <textarea name="print_settings" rows="3" placeholder="0.2 mm layers, 15% infill, PETG, no supports">{{ values.print_settings }}</textarea>
+    </label>
+
+    <fieldset class="upload-box">
+      <legend>Add files and images <small>(optional)</small></legend>
+      <label>Model files <small>(STL, 3MF, STEP, ZIP, &hellip;)</small>
+        <input type="file" name="files" multiple>
+      </label>
+      <label>Images
+        <input type="file" name="images" accept="image/*" multiple>
+      </label>
+      <label>Image URL
+        <input type="url" name="image_url" placeholder="https://example.com/photo.jpg">
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      <a href="{{ '/models/' ~ model.id if model else '/models' }}" role="button" class="secondary outline">Cancel</a>
+      <button type="submit">{{ "Save Changes" if model else "Add Model" }}</button>
+    </div>
+  </form>
+
+  {% if model %}{% include "library/_assets_edit.html" %}{% endif %}
+</article>
+
+<script>
+(function () {
+  var input = document.querySelector("[data-tags-input]");
+  if (!input) return;
+  document.querySelectorAll("[data-tag-suggest]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var name = btn.dataset.tagSuggest;
+      var tags = input.value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+      if (tags.map(function (t) { return t.toLowerCase(); }).indexOf(name.toLowerCase()) === -1) tags.push(name);
+      input.value = tags.join(", ");
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,8 +1,10 @@
 from sqlalchemy.orm import Session
 
 from ..auth import hash_password
-from ..models import Color, Manufacturer, MaterialType, Spool, User
+from ..models import Color, LibraryCategory, LibraryModel, LibraryTag, Manufacturer, MaterialType, Spool, User
 from .images import delete_image
+from .library import delete_model
+from .library_taxonomy import delete_tag
 
 MIN_PASSWORD = 8
 
@@ -30,10 +32,23 @@ def create_user(db: Session, username: str, password: str, *, is_admin: bool = F
 
 
 def delete_user(db: Session, user: User) -> None:
-    """Delete the account and everything it owns: spools (+inventory, +image files) and lookups."""
+    """Delete the account and everything it owns: spools (+inventory, +image files), lookups,
+    and the model library (models, unreferenced blobs, tags, categories)."""
     for spool in db.query(Spool).filter(Spool.user_id == user.id).all():
         delete_image(spool.image_path)
         db.delete(spool)  # inventory row cascades via the relationship
+    db.flush()
+    for model in db.query(LibraryModel).filter(LibraryModel.user_id == user.id).all():
+        delete_model(db, model)
+    for tag in db.query(LibraryTag).filter(LibraryTag.user_id == user.id).all():
+        delete_tag(db, tag)
+    # Detach parents first so delete order cannot trip the self-referencing FK.
+    cats = db.query(LibraryCategory).filter(LibraryCategory.user_id == user.id).all()
+    for cat in cats:
+        cat.parent_id = None
+    db.flush()
+    for cat in cats:
+        db.delete(cat)
     db.flush()
     for model in (Manufacturer, MaterialType, Color):
         db.query(model).filter(model.user_id == user.id).delete(synchronize_session=False)

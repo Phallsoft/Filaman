@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Shared Models — Filaman{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Shared models</h2>
+  <div class="page-actions">
+    <a href="/models" role="button" class="outline">My library</a>
+  </div>
+</div>
+<p class="muted">Models other users have chosen to share. Open one to download its files or add a copy to your own library.</p>
+
+<form method="get" action="/models/shared" class="search-form" role="search">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search shared models&hellip;">
+  <select name="owner" aria-label="Shared by" onchange="this.form.submit()">
+    <option value="">Everyone</option>
+    {% for o in owners %}
+    <option value="{{ o.id }}" {% if owner_id == o.id %}selected{% endif %}>{{ o.username }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="outline">Search</button>
+</form>
+
+{% if models %}
+<p class="muted result-count">{{ total }} model{{ "" if total == 1 else "s" }}</p>
+<div class="model-grid">
+  {% for m in models %}
+  <article class="model-card">
+    <a href="/models/{{ m.id }}" class="model-cover" tabindex="-1">
+      {% if m.cover %}<img src="/models/images/{{ m.cover.id }}" alt="" loading="lazy">
+      {% else %}<span class="model-cover-empty" aria-hidden="true">&#9651;</span>{% endif %}
+    </a>
+    <div class="model-body">
+      <a href="/models/{{ m.id }}" class="model-title">{{ m.title }}</a>
+      <div class="model-meta">
+        {% if m.platform %}<span class="badge">{{ m.platform }}</span>{% endif %}
+        <span>by {{ m.owner.username }}{% if m.user_id == user_id %} (yours){% endif %}</span>
+        {% if m.files %}<span title="Files">&#128206; {{ m.files|length }}</span>{% endif %}
+      </div>
+      {% if m.id in copies %}<a href="/models/{{ copies[m.id] }}" class="tag tag-active">In your library</a>{% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}<a href="{{ url_with(page=page - 1) }}">&larr; Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="{{ url_with(page=page + 1) }}">Next &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% elif q or owner_id %}
+<p class="empty-state">No shared models match. <a href="/models/shared">Show all</a></p>
+{% else %}
+<p class="empty-state">Nobody has shared a model yet. Use "Share with all users" on one of yours.</p>
+{% endif %}
+{% endblock %}

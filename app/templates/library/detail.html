@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ model.title }} — Filaman{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>{{ model.title }}</h2>
+  <div class="page-actions">
+    {% if is_owner %}
+    <a href="/models/{{ model.id }}/edit" role="button">Edit</a>
+    <form method="post" action="/models/{{ model.id }}/delete" class="inline-form"
+          onsubmit="return confirm('Delete this model and its files?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="outline danger-text">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if is_owner %}{% include "library/_share.html" %}{% else %}{% include "library/_copy.html" %}{% endif %}
+
+<div class="model-detail">
+  {% if model.images %}
+  <div class="gallery">
+    <img src="/models/images/{{ model.images[0].id }}" alt="{{ model.title }}" class="gallery-main" data-gallery-main>
+    {% if model.images|length > 1 %}
+    <div class="gallery-thumbs">
+      {% for img in model.images %}
+      <button type="button" class="gallery-thumb" data-gallery-src="/models/images/{{ img.id }}">
+        <img src="/models/images/{{ img.id }}" alt="Image {{ loop.index }}" loading="lazy">
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="model-info">
+    <dl class="meta-list">
+      {% if model.source_url %}
+      <dt>Source</dt>
+      <dd><a href="{{ model.source_url }}" target="_blank" rel="noopener noreferrer">{{ model.platform or model.source_url }}</a></dd>
+      {% elif model.platform %}
+      <dt>Platform</dt><dd>{{ model.platform }}</dd>
+      {% endif %}
+      {% if model.author %}<dt>Author</dt><dd>{{ model.author }}</dd>{% endif %}
+      {% if model.license %}<dt>License</dt><dd>{{ model.license }}</dd>{% endif %}
+      {% if is_owner %}
+      <dt>Category</dt>
+      <dd>{% if model.category_id %}<a href="/models?cat={{ model.category_id }}">{{ category_path }}</a>{% else %}<a href="/models?cat=none">Uncategorized</a>{% endif %}</dd>
+      {% if model.tags %}
+      <dt>Tags</dt>
+      <dd class="tag-list">{% for t in model.tags %}<a href="/models?tag={{ t.id }}" class="tag">{{ t.name }}</a>{% endfor %}</dd>
+      {% endif %}
+      {% else %}
+      <dt>Shared by</dt><dd>{{ model.owner.username }}</dd>
+      {% endif %}
+      {% if is_owner and model.copied_from %}
+      <dt>Copied from</dt>
+      <dd>{{ model.copied_from.owner.username }}</dd>
+      {% endif %}
+    </dl>
+
+    {% if model.description %}
+    <h4>Notes</h4>
+    <div class="prewrap">{{ model.description }}</div>
+    {% endif %}
+    {% if model.print_settings %}
+    <h4>Print settings</h4>
+    <div class="prewrap">{{ model.print_settings }}</div>
+    {% endif %}
+
+    {% if model.files %}
+    <h4>Files</h4>
+    <ul class="file-list">
+      {% for f in model.files %}
+      <li>
+        {% if file_exists[f.id] %}
+        <a href="/models/files/{{ f.id }}">{{ f.filename }}</a>
+        <small class="muted">{{ f.stored.size|filesize }}</small>
+        {% else %}
+        <span>{{ f.filename }}</span> <small class="danger-text">file missing</small>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+
+<p><a href="/models">&larr; Back to models</a></p>
+
+<script>
+document.querySelectorAll("[data-gallery-src]").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    document.querySelector("[data-gallery-main]").src = btn.dataset.gallerySrc;
+  });
+});
+</script>
+{% endblock %}

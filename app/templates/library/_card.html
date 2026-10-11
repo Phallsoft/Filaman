@@ -1,0 +1,26 @@
+<article class="model-card">
+  <label class="model-select" title="Select">
+    <input type="checkbox" name="ids" value="{{ m.id }}" form="bulk-form" data-bulk-check aria-label="Select {{ m.title }}">
+  </label>
+  <a href="/models/{{ m.id }}" class="model-cover" tabindex="-1">
+    {% if m.cover %}
+    <img src="/models/images/{{ m.cover.id }}" alt="" loading="lazy">
+    {% else %}
+    <span class="model-cover-empty" aria-hidden="true">&#9651;</span>
+    {% endif %}
+  </a>
+  <div class="model-body">
+    <a href="/models/{{ m.id }}" class="model-title">{{ m.title }}</a>
+    <div class="model-meta">
+      {% if m.platform %}<span class="badge">{{ m.platform }}</span>{% endif %}
+      {% if m.author %}<span>{{ m.author }}</span>{% endif %}
+      {% if m.files %}<span title="Files">&#128206; {{ m.files|length }}</span>{% endif %}
+      {% if m.is_shared %}<span title="Shared with all users">&#128101; shared</span>{% endif %}
+    </div>
+    {% if m.tags %}
+    <div class="tag-list">
+      {% for t in m.tags %}<a href="/models?tag={{ t.id }}" class="tag">{{ t.name }}</a>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</article>

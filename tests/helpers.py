@@ -86,3 +86,18 @@ def spool_qty(client, spool_id) -> int:
     m = re.search(r'name="qty"[^>]*value="(\d+)"', r.text)
     assert m, "qty not found"
     return int(m.group(1))
+
+
+def add_model(client, title="", url="", files=None, **fields) -> int:
+    token = csrf(client, "/models/new")
+    data = {"title": title, "source_url": url, "csrf_token": token, **fields}
+    r = client.post("/models", data=data, files=files or None)
+    assert r.status_code == 303, r.text
+    m = re.match(r"/models/(\d+)$", r.headers["location"])
+    assert m, f"create redirected to {r.headers['location']}"
+    return int(m.group(1))
+
+
+def model_ids(client, path="/models") -> list[int]:
+    html = client.get(path).text
+    return sorted({int(x) for x in re.findall(r'href="/models/(\d+)"', html)})

@@ -14,6 +14,10 @@ tracking, just "I have 3 black PLA spools, 1kg each."
   material, color (with hex code), SKU, weight, and pack quantity for you to review, edit, and save.
     Product page images are detected from metadata such as `og:image` so you can choose one during review.
   Missing manufacturers/materials/colors are created automatically.
+- **Model library** — keep a list of 3D models, from a bare title + link (paste a URL and the title is filled in)
+  to uploaded files (STL, 3MF, STEP, ZIP, …), images, author, license, notes, and print settings.
+  Organise with a category tree and tags, search everything, act on many models at once, and
+  share a model read-only with every user, who can add a copy to their own library
 - **Smart merging** — adding a spool identical to an existing one just bumps the quantity
 - **Clean, mobile-friendly UI** with light/dark theme
 - **Form-based auth** with first-run account setup
@@ -41,10 +45,12 @@ Open http://localhost:8000 — you'll be prompted to create your account on firs
 | `FILAMAN_PORT` | `8000` | Host port to publish the app on |
 | `FILAMAN_LEGACY_OWNER` | _(empty)_ | Optional, one-time: when upgrading a single-user database, move the existing inventory to a **new** user with this name (same password as the existing account); the existing account keeps the admin role. Leave empty to keep the data on the existing account. |
 | `MEDIA_DIR` | next to `DB_PATH` in `images/` | Local directory for stored spool images |
+| `FILES_DIR` | next to `DB_PATH` in `files/` | Model library files and images. Stored once per unique file (by SHA-256), served only to users allowed to see the model. |
+| `MODEL_MAX_FILE_MB` | `250` | Largest model file that can be uploaded, in MB |
 
 The database and spool images live in the `filaman-data` Docker volume. The first account created
 at `/setup` is the admin; it adds other users from the Admin page (Settings → change password is
-available to everyone). Backups taken from the Admin page are plain SQLite files (no images) and
+available to everyone). Backups taken from the Admin page are plain SQLite files (no spool images or model files) and
 can be restored from the same page. Upgrading an existing single-user database migrates it
 automatically at startup; the existing account keeps its inventory unless `FILAMAN_LEGACY_OWNER`
 names a new user to move it to. After upgrading, log out and back in so the Admin link appears
@@ -52,8 +58,8 @@ names a new user to move it to. After upgrading, log out and back in so the Admi
 
 ## Backup, restore, and moving to another host
 
-All persistent data is in the `filaman-data` volume (`/data` in the container): `filaman.db` and
-`images/spools/*.jpg`. The scripts below archive the whole volume; they stop the container briefly
+All persistent data is in the `filaman-data` volume (`/data` in the container): `filaman.db`,
+`images/spools/*.jpg`, and model library files under `files/`. The scripts below archive the whole volume; they stop the container briefly
 so the SQLite file is copied consistently. They run on Linux and in Git Bash on Windows.
 
 ```bash

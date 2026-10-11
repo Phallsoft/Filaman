@@ -1,0 +1,12 @@
+<div class="share-box">
+  {% if model.is_shared %}
+  <span>&#128101; Shared with all users (read-only for them).</span>
+  {% else %}
+  <span class="muted">Private: only you can see this model.</span>
+  {% endif %}
+  <form method="post" action="/models/{{ model.id }}/share">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="shared" value="{{ '0' if model.is_shared else '1' }}">
+    <button type="submit" class="outline secondary">{{ "Stop sharing" if model.is_shared else "Share with all users" }}</button>
+  </form>
+</div>

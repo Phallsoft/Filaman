@@ -30,19 +30,24 @@ def get_db():
 def init_db():
     from . import models  # noqa: F401
     from .migrations import add_spool_image_path, migrate_multi_user
+    from .services.library_search import ensure_index
 
     Base.metadata.create_all(engine)
     changed = add_spool_image_path(DB_PATH)
     changed = migrate_multi_user(DB_PATH) or changed
     if changed:
         engine.dispose()  # pooled connections saw the old schema
+    ensure_index(engine)
 
 
 def reset_db():
     from . import models  # noqa: F401
+    from .services.library_search import drop_index, ensure_index
 
+    drop_index(engine)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    ensure_index(engine)
 
 
 def get_owned(db, model, item_id: int, user_id: int):

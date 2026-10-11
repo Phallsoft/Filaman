@@ -216,8 +216,13 @@ input[type="color"] {
 .image-admin figcaption { display: flex; gap: 0.35rem; margin-top: 0.35rem; }
 .image-admin button { margin: 0; width: auto; padding: 0.15rem 0.5rem; font-size: 0.8rem; }
 
+.page-actions { align-items: center; }
+.page-actions form button { margin-bottom: 0; }
+
 @media (max-width: 760px) {
-  .lib-layout { grid-template-columns: 1fr; }
+  .lib-layout { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+  .quick-add fieldset[role="group"] { flex-direction: column; }
+  .quick-add fieldset[role="group"] > * { border-radius: var(--pico-border-radius) !important; margin-bottom: 0.4rem; }
   .model-detail { grid-template-columns: 1fr; }
   .model-grid { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); }
 }

@@ -89,6 +89,11 @@
 
 <script>
 (function () {
+  // On phones the category tree starts collapsed so the models are visible first.
+  var sidebar = document.querySelector(".lib-sidebar");
+  if (sidebar && window.matchMedia("(max-width: 760px)").matches) sidebar.open = false;
+})();
+(function () {
   var form = document.getElementById("bulk-form");
   if (!form) return;
   var checks = document.querySelectorAll("[data-bulk-check]");

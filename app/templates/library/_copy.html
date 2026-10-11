@@ -1,0 +1,37 @@
+<div class="share-box">
+  <span>Shared by <strong>{{ model.owner.username }}</strong>.</span>
+  {% if my_copy %}
+  <a href="/models/{{ my_copy.id }}" role="button" class="outline">In your library</a>
+  {% else %}
+  <button type="button" onclick="document.getElementById('copy-dialog').showModal()">Add to my library</button>
+  {% endif %}
+</div>
+
+{% if not my_copy %}
+<dialog id="copy-dialog">
+  <article>
+    <h3>Add to my library</h3>
+    <form method="post" action="/models/{{ model.id }}/copy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Category
+        <select name="category_id">
+          <option value="">Uncategorized</option>
+          {% for row in category_rows %}
+          <option value="{{ row.category.id }}">{{ "— " * row.depth }}{{ row.category.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>New category <small>(optional, created inside the selected one)</small>
+        <input name="new_category" maxlength="128">
+      </label>
+      <label>Tags <small>(comma-separated)</small>
+        <input name="tags">
+      </label>
+      <div class="form-actions">
+        <button type="button" class="secondary outline" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit">Add copy</button>
+      </div>
+    </form>
+  </article>
+</dialog>
+{% endif %}

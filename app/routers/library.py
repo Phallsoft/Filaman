@@ -338,3 +338,101 @@ def delete_model(
     db.commit()
     flash(request, f"Deleted “{title}”.", "success")
     return RedirectResponse("/models", status_code=303)
+
+
+@router.post("/{model_id:int}/share")
+def share_model(
+    request: Request,
+    model_id: int,
+    shared: str = Form("0"),
+    csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    verify_csrf(request, csrf_token)
+    model = _owned_or_404(db, model_id, user)
+    model.is_shared = shared == "1"
+    db.commit()
+    flash(request, "Shared with all users." if model.is_shared else "No longer shared.", "success")
+    return RedirectResponse(f"/models/{model.id}", status_code=303)
+
+
+@router.get("/shared")
+def shared_library(
+    request: Request,
+    q: str = "",
+    owner: str = "",
+    page: int = 1,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    query = db.query(LibraryModel).filter(LibraryModel.is_shared.is_(True))
+    owners = (
+        db.query(User)
+        .join(LibraryModel, LibraryModel.user_id == User.id)
+        .filter(LibraryModel.is_shared.is_(True))
+        .distinct()
+        .order_by(func.lower(User.username))
+        .all()
+    )
+    owner_id = int(owner) if owner.isdigit() else None
+    if owner_id:
+        query = query.filter(LibraryModel.user_id == owner_id)
+    q = q.strip()
+    ids = search_ids(db, q)
+    if ids is not None:
+        query = query.filter(LibraryModel.id.in_(ids))
+    total = query.count()
+    pages = max(1, -(-total // PAGE_SIZE))
+    page = min(max(1, page), pages)
+    models = (
+        query.options(selectinload(LibraryModel.images), selectinload(LibraryModel.files), selectinload(LibraryModel.owner))
+        .order_by(LibraryModel.updated_at.desc(), LibraryModel.id.desc())
+        .offset((page - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+        .all()
+    )
+    copies = dict(
+        db.query(LibraryModel.copied_from_id, LibraryModel.id)
+        .filter(LibraryModel.user_id == user.id, LibraryModel.copied_from_id.in_([m.id for m in models]))
+        .all()
+    )
+
+    def url_with(**overrides) -> str:
+        state = {"q": q, "owner": str(owner_id or ""), "page": ""}
+        state.update({k: str(v) for k, v in overrides.items()})
+        params = [(k, v) for k, v in state.items() if v]
+        return "/models/shared" + ("?" + urlencode(params) if params else "")
+
+    return templates.TemplateResponse(
+        request,
+        "library/shared.html",
+        {
+            "models": models, "total": total, "q": q, "owner_id": owner_id, "owners": owners,
+            "copies": copies, "page": page, "pages": pages, "url_with": url_with, "user_id": user.id,
+        },
+    )
+
+
+@router.post("/{model_id:int}/copy")
+def copy_shared_model(
+    request: Request,
+    model_id: int,
+    category_id: str = Form(""),
+    new_category: str = Form(""),
+    tags: str = Form(""),
+    csrf_token: str = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    verify_csrf(request, csrf_token)
+    src = lib.get_viewable(db, model_id, user)
+    if src is None or src.user_id == user.id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    cat_id, cat_error = lib.resolve_category(db, user.id, category_id, new_category)
+    if cat_error:
+        flash(request, cat_error, "error")
+    copy = lib.copy_model(db, src, user, cat_id, parse_tag_names(tags))
+    db.commit()
+    flash(request, f"Added “{copy.title}” to your library.", "success")
+    return RedirectResponse(f"/models/{copy.id}", status_code=303)

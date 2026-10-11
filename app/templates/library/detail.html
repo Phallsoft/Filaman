@@ -15,7 +15,7 @@
   </div>
 </div>
 
-{% if is_owner %}{% include "library/_share.html" ignore missing %}{% else %}{% include "library/_copy.html" ignore missing %}{% endif %}
+{% if is_owner %}{% include "library/_share.html" %}{% else %}{% include "library/_copy.html" %}{% endif %}
 
 <div class="model-detail">
   {% if model.images %}

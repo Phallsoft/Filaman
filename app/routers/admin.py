@@ -13,6 +13,7 @@ from ..database import get_db, init_db, reset_db
 from ..migrations import migrate_file
 from ..models import Spool, User
 from ..services import backup as backup_svc
+from ..services import file_store
 from ..services.users import create_user, delete_user, validate_password
 from ..templating import templates
 
@@ -156,5 +157,6 @@ def reset_database(
         flash(request, f'Reset cancelled — you must type exactly "{RESET_PHRASE}".', "error")
         return RedirectResponse("/admin", status_code=303)
     reset_db()
+    file_store.clear_all()  # model files can be large; spool images are left as before
     request.session.clear()
     return RedirectResponse("/setup", status_code=303)

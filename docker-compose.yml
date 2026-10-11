@@ -13,6 +13,8 @@ services:
       - AI_MODEL=${AI_MODEL:-openai/gpt-4o-mini}
       - BRIGHTDATA_MCP_URL=${BRIGHTDATA_MCP_URL:-}
       - FILAMAN_LEGACY_OWNER=${FILAMAN_LEGACY_OWNER:-}
+      - FILES_DIR=/data/files
+      - MODEL_MAX_FILE_MB=${MODEL_MAX_FILE_MB:-250}
     restart: unless-stopped
 
 volumes:
